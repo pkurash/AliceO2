@@ -57,7 +57,7 @@ Detector::Detector(bool active)
   auto& baseParam = FVDBaseParam::Instance();
   mNumberOfSectors = baseParam.nsect;
 
-  mDzScint = baseParam.dzscint/2;
+  mDzScint = baseParam.dzscint / 2;
 
   mRingRadiiA = baseParam.ringsA;
   mRingRadiiC = baseParam.ringsC;
@@ -120,7 +120,7 @@ bool Detector::ProcessHits(FairVolume* vol)
 
   auto stack = (o2::data::Stack*)fMC->GetStack();
 
-  //int cellId = vol->getVolumeId();
+  // int cellId = vol->getVolumeId();
 
   // Check track status to define when hit is started and when it is stopped
   bool startHit = false, stopHit = false;
@@ -278,8 +278,8 @@ void Detector::buildModules()
   TGeoVolumeAssembly* vFVDA = buildModuleA();
   TGeoVolumeAssembly* vFVDC = buildModuleC();
 
-  vCave->AddNode(vFVDA, 1, new TGeoTranslation(0., 0., mZmodA/* - mDzScint/2.*/));
-  vCave->AddNode(vFVDC, 1, new TGeoTranslation(0., 0., mZmodC/* + mDzScint/2.*/));
+  vCave->AddNode(vFVDA, 1, new TGeoTranslation(0., 0., mZmodA /* - mDzScint/2.*/));
+  vCave->AddNode(vFVDC, 1, new TGeoTranslation(0., 0., mZmodC /* + mDzScint/2.*/));
 }
 
 TGeoVolumeAssembly* Detector::buildModuleA()
@@ -355,7 +355,6 @@ void Detector::defineSensitiveVolumes()
     LOG(info) << "Adding FVD Sensitive Volume => " << v->GetName();
     AddSensitiveVolume(v);
   }
-  
 }
 
 int Detector::getChannelId(TVector3 vec)
