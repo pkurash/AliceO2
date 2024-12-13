@@ -122,7 +122,7 @@ bool Detector::ProcessHits(FairVolume* vol)
 
   auto stack = (o2::data::Stack*)fMC->GetStack();
 
-  //int cellId = vol->getVolumeId();
+  // int cellId = vol->getVolumeId();
 
   // Check track status to define when hit is started and when it is stopped
   bool startHit = false, stopHit = false;
