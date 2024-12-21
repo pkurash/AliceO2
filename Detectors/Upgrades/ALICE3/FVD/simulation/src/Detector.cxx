@@ -63,11 +63,11 @@ Detector::Detector(bool active)
 
   mDzScint = baseParam.dzscint / 2;
 
-  for (int i = 0; i <= mNumberOfRingsA + 1; i ++) {
-     mRingRadiiA.emplace_back(baseParam.ringsA[i]);
+  for (int i = 0; i <= mNumberOfRingsA + 1; i++) {
+    mRingRadiiA.emplace_back(baseParam.ringsA[i]);
   }
-  for (int i = 0; i <= mNumberOfRingsC + 1; i ++) {
-     mRingRadiiC.emplace_back(baseParam.ringsC[i]);
+  for (int i = 0; i <= mNumberOfRingsC + 1; i++) {
+    mRingRadiiC.emplace_back(baseParam.ringsC[i]);
   }
 
   mZmodA = baseParam.zmodA;
@@ -252,7 +252,7 @@ void Detector::createMaterials()
 
   int matId = 0;                  // tmp material id number
   const int unsens = 0, sens = 1; // sensitive or unsensitive medium
-                                    //
+                                  //
   int fieldType = 3;              // Field type
   float maxField = 5.0;           // Field max.
 
