@@ -382,8 +382,7 @@ int Detector::getChannelId(TVector3 vec)
   for (int i = 1; i < rd.size(); i++) {
     if (r < rd[i]) {
       break;
-    }
-    else {
+    } else {
       ir++;
     }
   }
