@@ -15,6 +15,7 @@
 #include <string_view>
 
 // o2 includes
+#include "Framework/Logger.h"
 #include "DataFormatsTPC/Defs.h"
 #include "CommonUtils/TreeStreamRedirector.h"
 
@@ -39,15 +40,27 @@ void CalibdEdxCorrection::clear()
 void CalibdEdxCorrection::writeToFile(std::string_view fileName, std::string_view objName) const
 {
   std::unique_ptr<TFile> file(TFile::Open(fileName.data(), "recreate"));
+  if (!file) {
+    LOGP(error, "Failed to open file {} for writing", fileName.data());
+    return;
+  }
+
   file->WriteObject(this, objName.data());
 }
 
 void CalibdEdxCorrection::loadFromFile(std::string_view fileName, std::string_view objName)
 {
   std::unique_ptr<TFile> file(TFile::Open(fileName.data()));
+  if (!file || file->IsZombie()) {
+    LOGP(error, "Failed to open file {}", fileName.data());
+    return;
+  }
+
   auto tmp = file->Get<CalibdEdxCorrection>(objName.data());
   if (tmp != nullptr) {
     *this = *tmp;
+  } else {
+    LOGP(error, "Failed to load object with name {} from file {}", objName.data(), fileName.data());
   }
 }
 

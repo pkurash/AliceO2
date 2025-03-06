@@ -22,6 +22,7 @@
 #include "DetectorsPassive/Shil.h"
 #include "DetectorsPassive/Hall.h"
 #include "DetectorsPassive/Pipe.h"
+#include "DetectorsPassive/PipeRun4.h"
 #include <Field/MagneticField.h>
 #include <MFTSimulation/Detector.h>
 #include <MCHSimulation/Detector.h>
@@ -55,6 +56,7 @@
 #include <IOTOFSimulation/Detector.h>
 #include <RICHSimulation/Detector.h>
 #include <ECalSimulation/Detector.h>
+#include <FDSimulation/Detector.h>
 #include <MI3Simulation/Detector.h>
 #include <Alice3DetectorsPassive/Pipe.h>
 #include <Alice3DetectorsPassive/Absorber.h>
@@ -153,8 +155,8 @@ void build_geometry(FairRunSim* run = nullptr)
   // beam pipe
   if (isActivated("PIPE")) {
 #ifdef ENABLE_UPGRADES
-    if (isActivated("IT3")) {
-      run->AddModule(new o2::passive::Pipe("PIPE", "Beam pipe", 1.6f, 0.05f));
+    if (isActivated("IT3") || isActivated("FOC")) {
+      run->AddModule(new o2::passive::PipeRun4("PIPE", "Beam pipe for Run4"));
     } else {
       run->AddModule(new o2::passive::Pipe("PIPE", "Beam pipe"));
     }
@@ -261,6 +263,11 @@ void build_geometry(FairRunSim* run = nullptr)
   if (isActivated("ECL")) {
     // ALICE 3 ECAL
     addReadoutDetector(new o2::ecal::Detector(isReadout("ECL")));
+  }
+
+  if (isActivated("FD")) {
+    // ALICE3 FD
+    addReadoutDetector(new o2::fd::Detector(isReadout("FD")));
   }
 
   if (isActivated("MI3")) {

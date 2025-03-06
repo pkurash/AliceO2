@@ -194,6 +194,8 @@ void SVStudySpec::updateTimeDependentParams(ProcessingContext& pc)
       // for occupancy estimator
       mParam = o2::gpu::GPUO2InterfaceUtils::getFullParamShared(0.f, mNHBPerTF);
     }
+    auto& elParam = o2::tpc::ParameterElectronics::Instance();
+    mTPCTBinMUSInv = 1. / elParam.ZbinWidth; // 1./TPC bin in microseconds
   }
   mBz = o2::base::Propagator::Instance()->getNominalBz();
   mFitterV0.setBz(mBz);
@@ -353,8 +355,8 @@ void SVStudySpec::process(o2::globaltracking::RecoContainer& recoData)
                  << "pv=" << pv
                  << "\n";
     }
-    tfID++;
   }
+  tfID++;
 }
 
 bool SVStudySpec::refitV0(const V0ID& id, o2::dataformats::V0& v0, o2::globaltracking::RecoContainer& recoData)

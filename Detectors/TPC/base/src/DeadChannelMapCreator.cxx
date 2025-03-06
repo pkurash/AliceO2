@@ -43,6 +43,11 @@ void DeadChannelMapCreator::loadFEEConfigViaRunInfoTS(long timeStamp)
   if (mObjectValidity[CDBType::ConfigRunInfo].isValid(timeStamp)) {
     return;
   }
+
+  const auto meta = mCCDBApi.retrieveHeaders(CDBTypeMap.at(CDBType::ConfigRunInfo), {}, timeStamp);
+  mObjectValidity[CDBType::ConfigRunInfo].startvalidity = std::stol(meta.at("Valid-From"));
+  mObjectValidity[CDBType::ConfigRunInfo].endvalidity = std::stol(meta.at("Valid-Until"));
+
   loadFEEConfig(timeStamp);
 }
 

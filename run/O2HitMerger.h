@@ -78,6 +78,7 @@
 #include <RICHSimulation/Detector.h>
 #include <ECalSimulation/Detector.h>
 #include <MI3Simulation/Detector.h>
+#include <FDSimulation/Detector.h>
 #endif
 
 #include <tbb/concurrent_unordered_map.h>
@@ -1018,6 +1019,10 @@ void O2HitMerger::initDetInstances()
     }
     if (i == DetID::ECL) {
       mDetectorInstances[i] = std::move(std::make_unique<o2::ecal::Detector>(true));
+      counter++;
+    }
+    if (i == DetID::FD) {
+      mDetectorInstances[i] = std::move(std::make_unique<o2::fd::Detector>(true));
       counter++;
     }
 #endif

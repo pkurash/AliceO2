@@ -18,9 +18,7 @@
 #include "GPUTPCGMTrackParam.h"
 #include "GPUTPCGMMergedTrackHit.h"
 
-namespace o2
-{
-namespace gpu
+namespace o2::gpu
 {
 /**
  * @class GPUTPCGMMergedTrack
@@ -125,7 +123,6 @@ class GPUTPCGMMergedTrack
   ClassDefNV(GPUTPCGMMergedTrack, 0);
 #endif
 };
-} // namespace gpu
-} // namespace o2
+} // namespace o2::gpu
 
 #endif
