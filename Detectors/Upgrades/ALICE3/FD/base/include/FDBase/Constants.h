@@ -27,8 +27,7 @@ struct Constants {
   static constexpr unsigned int nringsC = 6;
 
   static constexpr float etaMax = 7.0f;
-  static constexpr float etaMinC = 4.0f;
-  static constexpr float etaMinA = 5.0f;
+  static constexpr float etaMin = 4.0f;
 
   static constexpr unsigned int nringsA_withMG = 3;
   static constexpr float etaMinA_withMG = 5.0f;

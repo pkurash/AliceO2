@@ -58,8 +58,10 @@ Detector::Detector(bool active)
   mNumberOfRingsC = Constants::nringsC;
   mNumberOfSectors = Constants::nsect;
 
-  mEtaMax = Constants::etaMax;
-  mEtaMinC = Constants::etaMinC;
+  mEtaMinA = Constants::etaMin;
+  mEtaMaxA = Constants::etaMax;
+  mEtaMinC = -Constants::etaMax;
+  mEtaMaxC = -Constants::etaMin;
 
   auto& baseParam = FDBaseParam::Instance();
 
@@ -68,7 +70,7 @@ Detector::Detector(bool active)
     mEtaMinA = Constants::etaMinA_withMG;
   } else {
     mNumberOfRingsA = Constants::nringsA;
-    mEtaMinA = Constants::etaMinA;
+    mEtaMinA = Constants::etaMin;
   }
 
   mDzScint = baseParam.dzscint / 2;
@@ -76,13 +78,13 @@ Detector::Detector(bool active)
   mZmodC = baseParam.zmodC;
 
   for (int i = 0; i <= mNumberOfRingsA + 1; i++) {
-    float eta = mEtaMax - i * (mEtaMax - mEtaMinA) / mNumberOfRingsA;
+    float eta = mEtaMaxA - i * (mEtaMaxA - mEtaMinA) / mNumberOfRingsA;
     float r = ringRadius(mZmodA, eta);
     mRingRadiiA.emplace_back(r);
   }
 
   for (int i = 0; i <= mNumberOfRingsC + 1; i++) {
-    float eta = -mEtaMax + i * (mEtaMax - mEtaMinC) / mNumberOfRingsC;
+    float eta = mEtaMaxC - i * (mEtaMaxC - mEtaMinC) / mNumberOfRingsC;
     float r = ringRadius(mZmodC, eta);
     mRingRadiiC.emplace_back(r);
   }

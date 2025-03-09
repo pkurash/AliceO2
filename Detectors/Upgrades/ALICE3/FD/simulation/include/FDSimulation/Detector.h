@@ -108,10 +108,9 @@ class Detector : public o2::base::DetImpl<Detector>
   std::vector<float> mRingRadiiA = {};
   std::vector<float> mRingRadiiC = {};
 
-  float mEtaMax;
-  float mEtaMinC, mEtaMinA;
-  float mZmodA;
-  float mZmodC;
+  float mEtaMaxA, mEtaMaxC;
+  float mEtaMinA, mEtaMinC;
+  float mZmodA, mZmodC;
 
   void defineSensitiveVolumes();
 
