@@ -74,6 +74,7 @@ Detector::Detector(bool active)
   }
 
   mDzScint = baseParam.dzscint / 2;
+
   mZmodA = baseParam.zmodA;
   mZmodC = baseParam.zmodC;
 
@@ -84,7 +85,7 @@ Detector::Detector(bool active)
   }
 
   for (int i = 0; i <= mNumberOfRingsC + 1; i++) {
-    float eta = mEtaMaxC - i * (mEtaMaxC - mEtaMinC) / mNumberOfRingsC;
+    float eta = mEtaMinC + i * (mEtaMaxC - mEtaMinC) / mNumberOfRingsC;
     float r = ringRadius(mZmodC, eta);
     mRingRadiiC.emplace_back(r);
   }
