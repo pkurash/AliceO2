@@ -1,0 +1,167 @@
+// Copyright 2019-2025 CERN and copyright holders of ALICE O2.
+// See https://alice-o2.web.cern.ch/copyright for details of the copyright holders.
+// All rights not expressly granted are reserved.
+//
+// This software is distributed under the terms of the GNU General Public
+// License v3 (GPL Version 3), copied verbatim in the file "COPYING".
+//
+// In applying this license CERN does not waive the privileges and immunities
+// granted to it by virtue of its status as an Intergovernmental Organization
+// or submit itself to any jurisdiction.
+
+/// \file RecPoints.h
+/// \brief Definition of the FIT RecPoints class
+
+#ifndef ALICEO2_FD3_RECPOINTS_H
+#define ALICEO2_FD3_RECPOINTS_H
+
+#include "CommonDataFormat/InteractionRecord.h"
+#include "CommonDataFormat/TimeStamp.h"
+#include "DataFormatsFD3/ChannelData.h"
+#include "CommonDataFormat/RangeReference.h"
+#include "DataFormatsFD3/Digit.h"
+#include <array>
+#include "Rtypes.h"
+#include <TObject.h>
+#include <gsl/span>
+#include <string>
+#include <utility>
+#include <map>
+namespace o2
+{
+namespace fd3
+{
+
+struct ChannelDataFloat {
+
+  int ChId = -1;          // channel Id
+  int ChainQTC = -1;      // QTC chain
+  float CFDTime = -20000; // time in ps, 0 at the LHC clk center
+  float QTCAmpl = -20000; // Amplitude mV
+
+  ChannelDataFloat() = default;
+  ChannelDataFloat(int iPmt, float time, float charge, int chainQTC)
+  {
+    ChId = iPmt;
+    CFDTime = time;
+    QTCAmpl = charge;
+    ChainQTC = chainQTC;
+  }
+
+  void print() const;
+  bool operator==(const ChannelDataFloat&) const = default;
+
+  ClassDefNV(ChannelDataFloat, 1);
+};
+
+class RecPoints
+{
+
+ public:
+  enum ETimeType { kTimeMean,
+                   kTimeA,
+                   kTimeC,
+                   kTimeVertex };
+
+  // Enum for trigger nits specified in rec-points and AOD data
+  enum ETriggerBits { kOrA = 0,           // OrA time-trigger signal
+                      kOrC = 1,           // OrC time-trigger signal
+                      kSemiCentral = 2,   // Semi-central amplitude-trigger signal
+                      kCentral = 3,       // Central amplitude-trigger signal
+                      kVertex = 4,        // Vertex time-trigger signal
+                      kIsActiveSideA = 5, // Side-A has at least one channel active
+                      kIsActiveSideC = 6, // Side-C has at least one channel active
+                      kIsFlangeEvent = 7  // Flange event at Side-C, at least one channel has time which corresponds to -82 cm area
+  };
+  static const inline std::map<unsigned int, std::string> sMapTriggerBits = {
+    {ETriggerBits::kOrA, "OrA"},
+    {ETriggerBits::kOrC, "OrC"},
+    {ETriggerBits::kSemiCentral, "Semicentral"},
+    {ETriggerBits::kCentral, "Central"},
+    {ETriggerBits::kVertex, "Vertex"},
+    {ETriggerBits::kIsActiveSideA, "IsActiveSideA"},
+    {ETriggerBits::kIsActiveSideC, "IsActiveSideC"},
+    {ETriggerBits::kIsFlangeEvent, "IsFlangeEvent"}};
+
+  enum ETechnicalBits { kLaser = 0,             // indicates the laser was triggered in this BC
+                        kOutputsAreBlocked = 1, // indicates that laser-induced pulses should arrive from detector to FEE in this BC (and trigger outputs are blocked)
+                        kDataIsValid = 2,       // data is valid for processing
+  };
+  static const inline std::map<unsigned int, std::string> sMapTechnicalBits = {
+    {ETechnicalBits::kLaser, "Laser"},
+    {ETechnicalBits::kOutputsAreBlocked, "OutputsAreBlocked"},
+    {ETechnicalBits::kDataIsValid, "DataIsValid"}};
+
+  o2::dataformats::RangeReference<int, int> ref;
+  o2::InteractionRecord mIntRecord; // Interaction record (orbit, bc)
+  RecPoints() = default;
+  RecPoints(const std::array<short, 4>& collisiontime,
+            int first, int ne, o2::InteractionRecord iRec, o2::fd3::Triggers chTrig)
+    : mCollisionTime(collisiontime)
+  {
+    ref.setFirstEntry(first);
+    ref.setEntries(ne);
+    mIntRecord = iRec;
+    mTriggers = chTrig;
+  }
+  RecPoints(int chDataFirstEntryPos,
+            int chDataNEntries,
+            const o2::InteractionRecord& ir,
+            const std::array<short, 4>& arrTimes,
+            const o2::fd3::Triggers& digitTriggers,
+            uint8_t extraTriggerWord) : mIntRecord(ir), mCollisionTime(arrTimes), mTriggers(digitTriggers)
+  {
+    ref.setFirstEntry(chDataFirstEntryPos);
+    ref.setEntries(chDataNEntries);
+    initRecPointTriggers(digitTriggers, extraTriggerWord);
+  }
+
+  ~RecPoints() = default;
+
+  short getCollisionTime(int side) const { return mCollisionTime[side]; }
+  short getCollisionTimeMean() const { return getCollisionTime(kTimeMean); }
+  short getCollisionTimeA() const { return getCollisionTime(kTimeA); }
+  short getCollisionTimeC() const { return getCollisionTime(kTimeC); }
+  bool isValidTime(int side) const { return getCollisionTime(side) < o2::InteractionRecord::DummyTime; }
+  void setCollisionTime(short time, int side) { mCollisionTime[side] = time; }
+
+  short getVertex() const { return getCollisionTime(kTimeVertex); }
+  void setVertex(short vertex) { mCollisionTime[kTimeVertex] = vertex; }
+
+  o2::fd3::Triggers getTrigger() const { return mTriggers; }
+  void setTriggers(o2::fd3::Triggers trig) { mTriggers = trig; }
+  uint8_t getTechnicalWord() const { return mTechnicalWord; }
+  static constexpr uint8_t makeExtraTrgWord(bool isActiveA = true, bool isActiveC = true, bool isFlangeEvent = true)
+  {
+    return (static_cast<uint8_t>(isActiveA) << kIsActiveSideA) |
+           (static_cast<uint8_t>(isActiveC) << kIsActiveSideC) |
+           (static_cast<uint8_t>(isFlangeEvent) << kIsFlangeEvent);
+  }
+
+  o2::InteractionRecord getInteractionRecord() const { return mIntRecord; };
+  gsl::span<const ChannelDataFloat> getBunchChannelData(const gsl::span<const ChannelDataFloat> tfdata) const;
+  short static constexpr sDummyCollissionTime = 32767;
+
+  void print() const;
+  bool operator==(const RecPoints&) const = default;
+
+ private:
+  void initRecPointTriggers(const o2::fd3::Triggers& digitTriggers, uint8_t extraTrgWord = 0)
+  {
+    const auto digitTriggerWord = digitTriggers.getTriggersignals();
+    const auto trgAndTechWordPair = o2::fd3::Triggers::parseDigitTriggerWord(digitTriggerWord, true);
+    mTriggers.setTriggers(trgAndTechWordPair.first | extraTrgWord);
+    mTechnicalWord = trgAndTechWordPair.second;
+  }
+
+  std::array<short, 4> mCollisionTime = {sDummyCollissionTime,
+                                         sDummyCollissionTime,
+                                         sDummyCollissionTime,
+                                         sDummyCollissionTime};
+  o2::fd3::Triggers mTriggers; // pattern of triggers  in this BC
+  uint8_t mTechnicalWord{0};   // field for keeping ETechnicalBits
+  ClassDefNV(RecPoints, 4);
+};
+} // namespace fd3
+} // namespace o2
+#endif
