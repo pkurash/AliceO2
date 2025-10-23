@@ -10,7 +10,14 @@
 # or submit itself to any jurisdiction.
 
 o2_add_library(DataFormatsFD3
-  SOURCES src/Hit.cxx
+  SOURCES src/CalibParam.cxx
+          src/ChannelData.cxx
+	  src/CTF.cxx
+	  src/Digit.cxx
+	  src/DigitFilterParam.cxx
+          src/Hit.cxx
+          src/Triggers.cxx
+          
   PUBLIC_LINK_LIBRARIES O2::FD3Base
                         O2::SimulationDataFormat
                         O2::CommonDataFormat
@@ -19,5 +26,12 @@ o2_add_library(DataFormatsFD3
 )
 
 o2_target_root_dictionary(DataFormatsFD3
-  HEADERS include/DataFormatsFD3/Hit.h
+  HEADERS include/DataFormatsFD3/CalibParam.h
+	  include/DataFormatsFD3/ChannelData.h
+          include/DataFormatsFD3/CTF.h
+	  include/DataFormatsFD3/Digit.h
+	  include/DataFormatsFD3/DigitFilterParam.h
+          include/DataFormatsFD3/Hit.h
+	  include/DataFormatsFD3/MCLabel.h
+          include/DataFormatsFD3/Triggers.h
 )
