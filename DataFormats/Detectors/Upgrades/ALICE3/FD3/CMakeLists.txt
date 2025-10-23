@@ -17,6 +17,7 @@ o2_add_library(DataFormatsFD3
 	  src/DigitFilterParam.cxx
           src/Hit.cxx
           src/Triggers.cxx
+	  src/RecPoints.cxx
           
   PUBLIC_LINK_LIBRARIES O2::FD3Base
                         O2::SimulationDataFormat
@@ -34,4 +35,5 @@ o2_target_root_dictionary(DataFormatsFD3
           include/DataFormatsFD3/Hit.h
 	  include/DataFormatsFD3/MCLabel.h
           include/DataFormatsFD3/Triggers.h
+	  include/DataFormatsFD3/RecPoints.h
 )
