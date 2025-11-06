@@ -93,6 +93,23 @@ class GeometryTGeo : public o2::detectors::DetMatrixCache
   int getModule(int index) const;
   int getChip(int index) const;
 
+  void defineMLOTSensors();
+  int getBarrelLayer(int) const;
+
+  // sensor ref X and alpha for ML & OT
+  void extractSensorXAlphaMLOT(int, float&, float&);
+
+  // cache for tracking frames (ML & OT)
+  bool isTrackingFrameCachedMLOT() const { return !mCacheRefXMLOT.empty(); }
+  void fillTrackingFramesCacheMLOT();
+
+  float getSensorRefAlphaMLOT(int index) const { return mCacheRefAlphaMLOT[index]; }
+  float getSensorXMLOT(int index) const { return mCacheRefXMLOT[index]; }
+
+  // create matrix for tracking to local frame for MLOT
+  TGeoHMatrix& createT2LMatrixMLOT(int);
+
+  /// This routine computes the chip index number from the subDetID, petal, disk, layer, stave /// TODO: retrieve also from chip when chips will be available
   /// This routine computes the chip index number from the subDetID, petal, disk, layer, stave, half stave, module, chip
   /// \param int subDetID The subdetector ID, 0 for VD, 1 for MLOT
   /// \param int petalcase The petal case number for VD, from 0 to 3
@@ -199,6 +216,10 @@ class GeometryTGeo : public o2::detectors::DetMatrixCache
   std::array<char, MAXLAYERS> mLayerToWrapper; ///< Layer to wrapper correspondence, not implemented yet
 
   bool mOwner = true; //! is it owned by the singleton?
+
+  std::vector<int> sensorsMLOT;
+  std::vector<float> mCacheRefXMLOT;     /// cache for X of ML and OT
+  std::vector<float> mCacheRefAlphaMLOT; /// cache for sensor ref alpha ML and OT
 
  private:
   static std::unique_ptr<o2::trk::GeometryTGeo> sInstance;
