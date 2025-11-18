@@ -14,11 +14,6 @@
 
 #define GPUCA_CADEBUG 0
 #define DEBUG_SINGLE_TRACK -1
-#define EXTRACT_RESIDUALS 0
-
-#if EXTRACT_RESIDUALS == 1
-#include "GPUROOTDump.h"
-#endif
 
 #include "GPUTPCDef.h"
 #include "GPUTPCGMTrackParam.h"
@@ -151,6 +146,7 @@ GPUd() bool GPUTPCGMTrackParam::Fit(GPUTPCGMMerger* GPUrestrict() merger, int32_
         const float rmax = (83.5f + param.rec.tpc.sysClusErrorMinDist);
         if (r2 < rmax * rmax) {
           MarkClusters(clusters, ihitMergeFirst, ihit, wayDirection, GPUTPCGMMergedTrackHit::flagRejectErr);
+          continue;
         }
       }
 
@@ -513,10 +509,15 @@ GPUd() float GPUTPCGMTrackParam::AttachClusters(const GPUTPCGMMerger* GPUrestric
   const float stepZ = row.HstepZ();
   int32_t bin, ny, nz;
 
+  bool protect = CAMath::Abs(GetQPt() * Merger->Param().qptB5Scaler) <= Merger->Param().rec.tpc.rejectQPtB5 && goodLeg;
+
   float err2Y, err2Z;
   Merger->Param().GetClusterErrors2(sector, iRow, Z, mP[2], mP[3], -1.f, 0.f, 0.f, err2Y, err2Z);                                       // TODO: Use correct time/avgCharge
-  const float sy2 = CAMath::Min(Merger->Param().rec.tpc.tubeMaxSize2, Merger->Param().rec.tpc.tubeChi2 * (err2Y + CAMath::Abs(mC[0]))); // Cov can be bogus when following circle
-  const float sz2 = CAMath::Min(Merger->Param().rec.tpc.tubeMaxSize2, Merger->Param().rec.tpc.tubeChi2 * (err2Z + CAMath::Abs(mC[2]))); // In that case we should provide the track error externally
+  const float tubeMaxSize2 = protect ? Merger->Param().rec.tpc.tubeProtectMaxSize2 : Merger->Param().rec.tpc.tubeRemoveMaxSize2;
+  const float tubeMinSize2 = protect ? Merger->Param().rec.tpc.tubeProtectMinSize2 : 0.f;
+  const float tubeSigma2 = protect ? Merger->Param().rec.tpc.tubeProtectSigma2 : Merger->Param().rec.tpc.tubeRemoveSigma2;
+  const float sy2 = CAMath::Max(tubeMinSize2, CAMath::Min(tubeMaxSize2, tubeSigma2 * (err2Y + CAMath::Abs(mC[0])))); // Cov can be bogus when following circle
+  const float sz2 = CAMath::Max(tubeMinSize2, CAMath::Min(tubeMaxSize2, tubeSigma2 * (err2Z + CAMath::Abs(mC[2])))); // In that case we should provide the track error externally
   const float tubeY = CAMath::Sqrt(sy2);
   const float tubeZ = CAMath::Sqrt(sz2);
   const float sy21 = 1.f / sy2;
@@ -537,6 +538,10 @@ GPUd() float GPUTPCGMTrackParam::AttachClusters(const GPUTPCGMMerger* GPUrestric
   if (goodLeg) {
     myWeight |= gputpcgmmergertypes::attachGoodLeg;
   }
+  if (protect) {
+    myWeight |= gputpcgmmergertypes::attachProtect;
+  }
+
   for (int32_t k = 0; k <= nz; k++) {
     const int32_t mybin = bin + k * nBinsY;
     const uint32_t hitFst = firsthit[mybin];
@@ -901,7 +906,7 @@ GPUdii() void GPUTPCGMTrackParam::RefitTrack(GPUTPCGMMergedTrack& GPUrestrict() 
   }
 
   // clang-format off
-  CADEBUG(if (DEBUG_SINGLE_TRACK >= 0 && iTrk != DEBUG_SINGLE_TRACK) { track.SetNClusters(0); track.SetOK(0); return; } );
+  CADEBUG(if (DEBUG_SINGLE_TRACK != -1 && iTrk != ((DEBUG_SINGLE_TRACK == -2 && getenv("DEBUG_TRACK")) ? atoi(getenv("DEBUG_TRACK")) :  DEBUG_SINGLE_TRACK)) { track.SetNClusters(0); track.SetOK(0); return; } );
   // clang-format on
 
   int32_t nTrackHits = track.NClusters();

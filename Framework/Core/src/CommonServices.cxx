@@ -1080,6 +1080,22 @@ o2::framework::ServiceSpec CommonServices::dataProcessingStats()
                    .minPublishInterval = 0,
                    .maxRefreshLatency = 10000,
                    .sendInitialValue = true},
+        MetricSpec{.name = "timeslices-expired",
+                   .enabled = arrowAndResourceLimitingMetrics,
+                   .metricId = static_cast<short>(ProcessingStatsId::TIMESLICE_NUMBER_EXPIRED),
+                   .kind = Kind::UInt64,
+                   .scope = Scope::DPL,
+                   .minPublishInterval = 0,
+                   .maxRefreshLatency = 10000,
+                   .sendInitialValue = true},
+        MetricSpec{.name = "timeslices-consumed",
+                   .enabled = arrowAndResourceLimitingMetrics,
+                   .metricId = static_cast<short>(ProcessingStatsId::TIMESLICE_OFFER_NUMBER_CONSUMED),
+                   .kind = Kind::UInt64,
+                   .scope = Scope::DPL,
+                   .minPublishInterval = 0,
+                   .maxRefreshLatency = 10000,
+                   .sendInitialValue = true},
         MetricSpec{.name = "resources-missing",
                    .enabled = enableDebugMetrics,
                    .metricId = static_cast<short>(ProcessingStatsId::RESOURCES_MISSING),
@@ -1234,17 +1250,6 @@ o2::framework::ServiceSpec CommonServices::dataProcessorContextSpec()
     },
     .configure = noConfiguration(),
     .exit = [](ServiceRegistryRef, void* service) { auto* context = (DataProcessorContext*)service; delete context; },
-    .kind = ServiceKind::Serial};
-}
-
-o2::framework::ServiceSpec CommonServices::deviceContextSpec()
-{
-  return ServiceSpec{
-    .name = "device-context",
-    .init = [](ServiceRegistryRef, DeviceState&, fair::mq::ProgOptions&) -> ServiceHandle {
-      return ServiceHandle{TypeIdHelpers::uniqueId<DeviceContext>(), new DeviceContext()};
-    },
-    .configure = noConfiguration(),
     .kind = ServiceKind::Serial};
 }
 
