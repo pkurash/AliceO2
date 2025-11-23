@@ -38,6 +38,7 @@
 #include <utility>
 #include <vector>
 #include <climits>
+#include <numeric>
 
 O2_DECLARE_DYNAMIC_LOG(workflow_helpers);
 
@@ -435,7 +436,7 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
     "internal-dpl-aod-spawner",
     {},
     {},
-    readers::AODReaderHelpers::aodSpawnerCallback(ac.spawnerInputs),
+    readers::AODReaderHelpers::aodSpawnerCallback(ctx),
     {}};
   AnalysisSupportHelpers::addMissingOutputsToSpawner({}, ac.spawnerInputs, ac.requestedAODs, aodSpawner);
 
@@ -465,12 +466,12 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
     if (mctracks2aod == workflow.end()) {
       // add normal reader
       auto&& algo = PluginManager::loadAlgorithmFromPlugin("O2FrameworkAnalysisSupport", "ROOTFileReader", ctx);
-      aodReader.algorithm = algo;
+      aodReader.algorithm = CommonDataProcessors::wrapWithTimesliceConsumption(algo);
       aodReader.outputs.emplace_back(OutputSpec{"TFN", "TFNumber"});
       aodReader.outputs.emplace_back(OutputSpec{"TFF", "TFFilename"});
     } else {
       // AODs are being injected on-the-fly, add dummy reader
-      aodReader.algorithm = AlgorithmSpec{
+      auto algo = AlgorithmSpec{
         adaptStateful(
           [outputs = aodReader.outputs](DeviceSpec const&) {
             LOGP(warn, "Workflow with injected AODs has unsatisfied inputs:");
@@ -481,6 +482,7 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
             // to ensure the output type for adaptStateful
             return adaptStateless([](DataAllocator&) {});
           })};
+      aodReader.algorithm = CommonDataProcessors::wrapWithTimesliceConsumption(algo);
     }
     auto concrete = DataSpecUtils::asConcreteDataMatcher(aodReader.inputs[0]);
     timer.outputs.emplace_back(concrete.origin, concrete.description, concrete.subSpec, Lifetime::Enumeration);

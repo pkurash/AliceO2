@@ -45,6 +45,7 @@ using namespace o2::framework::data_matcher;
 // Special log to track callbacks we know about
 O2_DECLARE_DYNAMIC_LOG(callbacks);
 O2_DECLARE_DYNAMIC_LOG(rate_limiting);
+O2_DECLARE_DYNAMIC_LOG(quota);
 
 namespace o2::framework
 {
@@ -212,7 +213,7 @@ DataProcessorSpec CommonDataProcessors::getDummySink(std::vector<InputSpec> cons
         auto oldestPossingTimeslice = timesliceIndex.getOldestPossibleOutput().timeslice.value;
         auto& stats = services.get<DataProcessingStats>();
         stats.updateStats({(int)ProcessingStatsId::CONSUMED_TIMEFRAMES, DataProcessingStats::Op::Set, (int64_t)oldestPossingTimeslice});
-        stats.updateStats({(int)ProcessingStatsId::TIMESLICE_OFFER_NUMBER_CONSUMED, DataProcessingStats::Op::Set, (int64_t)oldestPossingTimeslice});
+        stats.updateStats({(int)ProcessingStatsId::TIMESLICE_NUMBER_DONE, DataProcessingStats::Op::Set, (int64_t)oldestPossingTimeslice});
         stats.processCommandQueue();
       };
       callbacks.set<CallbackService::Id::DomainInfoUpdated>(domainInfoUpdated);
@@ -240,14 +241,14 @@ DataProcessorSpec CommonDataProcessors::getScheduledDummySink(std::vector<InputS
       // this information will be aggregated in the driver which will then decide wether or not a new offer for
       // a timeslice should be done and to which device
       auto domainInfoUpdated = [](ServiceRegistryRef services, size_t timeslice, ChannelIndex channelIndex) {
-        LOGP(info, "Domain info updated with timeslice {}", timeslice);
+        LOGP(debug, "Domain info updated with timeslice {}", timeslice);
         auto& timesliceIndex = services.get<TimesliceIndex>();
         auto oldestPossingTimeslice = timesliceIndex.getOldestPossibleOutput().timeslice.value;
         auto& stats = services.get<DataProcessingStats>();
         O2_SIGNPOST_ID_GENERATE(sid, rate_limiting);
         O2_SIGNPOST_EVENT_EMIT(rate_limiting, sid, "run", "Consumed timeframes (domain info updated) to be set to %zu.", oldestPossingTimeslice);
         stats.updateStats({(int)ProcessingStatsId::CONSUMED_TIMEFRAMES, DataProcessingStats::Op::Set, (int64_t)oldestPossingTimeslice});
-        stats.updateStats({(int)ProcessingStatsId::TIMESLICE_OFFER_NUMBER_CONSUMED, DataProcessingStats::Op::Set, (int64_t)oldestPossingTimeslice});
+        stats.updateStats({(int)ProcessingStatsId::TIMESLICE_NUMBER_DONE, DataProcessingStats::Op::Set, (int64_t)oldestPossingTimeslice});
         stats.processCommandQueue();
       };
       callbacks.set<CallbackService::Id::DomainInfoUpdated>(domainInfoUpdated);
@@ -257,7 +258,8 @@ DataProcessorSpec CommonDataProcessors::getScheduledDummySink(std::vector<InputS
         auto oldestPossingTimeslice = timesliceIndex.getOldestPossibleOutput().timeslice.value;
         O2_SIGNPOST_EVENT_EMIT(rate_limiting, sid, "run", "Consumed timeframes (processing) to be set to %zu.", oldestPossingTimeslice);
         stats.updateStats({(int)ProcessingStatsId::CONSUMED_TIMEFRAMES, DataProcessingStats::Op::Set, (int64_t)oldestPossingTimeslice});
-        stats.updateStats({(int)ProcessingStatsId::TIMESLICE_OFFER_NUMBER_CONSUMED, DataProcessingStats::Op::Set, (int64_t)oldestPossingTimeslice});
+        stats.updateStats({(int)ProcessingStatsId::TIMESLICE_NUMBER_DONE, DataProcessingStats::Op::Set, (int64_t)oldestPossingTimeslice});
+        stats.processCommandQueue();
       });
     })},
     .labels = {{"resilient"}}};
@@ -268,12 +270,48 @@ AlgorithmSpec CommonDataProcessors::wrapWithRateLimiting(AlgorithmSpec spec)
   return PluginManager::wrapAlgorithm(spec, [](AlgorithmSpec::ProcessCallback& original, ProcessingContext& pcx) -> void {
     auto& raw = pcx.services().get<RawDeviceService>();
     static RateLimiter limiter;
+    O2_SIGNPOST_ID_FROM_POINTER(sid, rate_limiting, &pcx);
     auto limit = std::stoi(raw.device()->fConfig->GetValue<std::string>("timeframes-rate-limit"));
-    LOG(detail) << "Rate limiting to " << limit << " timeframes in flight";
+    O2_SIGNPOST_EVENT_EMIT_DETAIL(rate_limiting, sid, "rate limiting callback",
+                                  "Rate limiting to %d timeframes in flight", limit);
     limiter.check(pcx, limit, 2000);
-    LOG(detail) << "Rate limiting passed. Invoking old callback";
+    O2_SIGNPOST_EVENT_EMIT_DETAIL(rate_limiting, sid, "rate limiting callback",
+                                  "Rate limiting passed. Invoking old callback.");
     original(pcx);
-    LOG(detail) << "Rate limited callback done";
+    O2_SIGNPOST_EVENT_EMIT_DETAIL(rate_limiting, sid, "rate limiting callback",
+                                  "Rate limited callback done.");
+  });
+}
+
+// The wrapped algorithm consumes 1 timeslice every time is invoked
+AlgorithmSpec CommonDataProcessors::wrapWithTimesliceConsumption(AlgorithmSpec spec)
+{
+  return PluginManager::wrapAlgorithm(spec, [](AlgorithmSpec::ProcessCallback& original, ProcessingContext& pcx) -> void {
+    original(pcx);
+
+    auto disposeResources = [](int taskId,
+                               std::array<ComputingQuotaOffer, 32>& offers,
+                               ComputingQuotaStats& stats,
+                               std::function<void(ComputingQuotaOffer const&, ComputingQuotaStats&)> accountDisposed) {
+      ComputingQuotaOffer disposed;
+      disposed.sharedMemory = 0;
+      // When invoked, we have processed one timeslice by construction.
+      int64_t timeslicesProcessed = 1;
+      for (auto& offer : offers) {
+        if (offer.user != taskId) {
+          continue;
+        }
+        int64_t toRemove = std::min((int64_t)timeslicesProcessed, offer.timeslices);
+        offer.timeslices -= toRemove;
+        timeslicesProcessed -= toRemove;
+        disposed.timeslices += toRemove;
+        if (timeslicesProcessed <= 0) {
+          break;
+        }
+      }
+      return accountDisposed(disposed, stats);
+    };
+    pcx.services().get<DeviceState>().offerConsumers.emplace_back(disposeResources);
   });
 }
 

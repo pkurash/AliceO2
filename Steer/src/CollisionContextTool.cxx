@@ -552,8 +552,18 @@ int main(int argc, char* argv[])
   }
   digicontext.setBunchFilling(bunchFillings[0]);
   std::vector<std::string> prefixes;
+  // Signal interaction rate
+  float sgnIRate = -1.;
   for (auto& p : ispecs) {
     prefixes.push_back(p.name);
+    // Set the interaction rate from the first pattern with a valid value.
+    // This handles both simple signal-only productions (where "sgn" has the rate)
+    // and embedding productions (where "bkg" has the rate and "sgn" syncs to it)
+    if (sgnIRate < 0 && p.interactionRate > 0) {
+      LOG(debug) << "Setting signal interaction rate to " << p.interactionRate << " Hz in the digitization context.";
+      sgnIRate = p.interactionRate;
+      digicontext.setDigitizerInteractionRate(p.interactionRate);
+    }
   }
   digicontext.setSimPrefixes(prefixes);
 
