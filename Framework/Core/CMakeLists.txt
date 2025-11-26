@@ -142,6 +142,7 @@ o2_add_library(Framework
                        src/Array2D.cxx
                        src/Variant.cxx
                        src/VariantJSONHelpers.cxx
+                       src/ExpressionJSONHelpers.cxx
                        src/VariantPropertyTreeHelpers.cxx
                        src/WorkflowCustomizationHelpers.cxx
                        src/WorkflowHelpers.cxx
@@ -236,6 +237,7 @@ add_executable(o2-test-framework-core
               test/test_InputSpec.cxx
               test/test_LogParsingHelpers.cxx
               test/test_Mermaid.cxx
+              test/test_MessageSet.cxx
               test/test_OptionsHelpers.cxx
               test/test_OverrideLabels.cxx
               test/test_O2DataModelHelpers.cxx

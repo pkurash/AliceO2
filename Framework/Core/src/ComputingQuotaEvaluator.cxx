@@ -246,7 +246,8 @@ void ComputingQuotaEvaluator::dispose(int taskId)
 void ComputingQuotaEvaluator::updateOffers(std::vector<ComputingQuotaOffer>& pending, uint64_t now)
 {
   O2_SIGNPOST_ID_GENERATE(oid, quota);
-  O2_SIGNPOST_START(quota, oid, "updateOffers", "Starting to processe received offers");
+  O2_SIGNPOST_START(quota, oid, "updateOffers", "Starting to process %zu received offers", pending.size());
+  int lastValid = -1;
   for (size_t oi = 0; oi < mOffers.size(); oi++) {
     auto& storeOffer = mOffers[oi];
     auto& info = mInfos[oi];
@@ -256,6 +257,9 @@ void ComputingQuotaEvaluator::updateOffers(std::vector<ComputingQuotaOffer>& pen
     }
     if (storeOffer.valid == true) {
       O2_SIGNPOST_EVENT_EMIT(quota, oid, "updateOffers", "Skipping update of offer %zu because it's still valid", oi);
+      // In general we want to fill an invalid offer. If we do not find any
+      // we add to the last valid offer we found.
+      lastValid = oi;
       continue;
     }
     info.received = now;
@@ -266,7 +270,22 @@ void ComputingQuotaEvaluator::updateOffers(std::vector<ComputingQuotaOffer>& pen
     storeOffer.valid = true;
     pending.pop_back();
   }
-  O2_SIGNPOST_END_WITH_ERROR(quota, oid, "updateOffers", "Some of the pending offers were not treated");
+  if (lastValid == -1) {
+    O2_SIGNPOST_END_WITH_ERROR(quota, oid, "updateOffers", "ComputingQuotaOffer losts. This should never happen.");
+    return;
+  }
+  auto& lastValidOffer = mOffers[lastValid];
+  for (auto& stillPending : pending) {
+    lastValidOffer.cpu += stillPending.cpu;
+    lastValidOffer.memory += stillPending.memory;
+    lastValidOffer.sharedMemory += stillPending.sharedMemory;
+    lastValidOffer.timeslices += stillPending.timeslices;
+    lastValidOffer.runtime = std::max(lastValidOffer.runtime, stillPending.runtime);
+  }
+  pending.clear();
+  auto& updatedOffer = mOffers[lastValid];
+  O2_SIGNPOST_END(quota, oid, "updateOffers", "Remaining offers cohalesced to %d. New values: Cpu%d, Shared Memory %lli, Timeslices %lli",
+                  lastValid, updatedOffer.cpu, updatedOffer.sharedMemory, updatedOffer.timeslices);
 }
 
 void ComputingQuotaEvaluator::handleExpired(std::function<void(ComputingQuotaOffer const&, ComputingQuotaStats const& stats)> expirator)
@@ -287,8 +306,8 @@ void ComputingQuotaEvaluator::handleExpired(std::function<void(ComputingQuotaOff
   for (auto& ref : mExpiredOffers) {
     auto& offer = mOffers[ref.index];
     O2_SIGNPOST_ID_FROM_POINTER(oid, quota, (void*)(int64_t)(ref.index * 8));
-    if (offer.sharedMemory < 0) {
-      O2_SIGNPOST_END(quota, oid, "handleExpired", "Offer %d does not have any more memory. Marking it as invalid.", ref.index);
+    if (offer.sharedMemory < 0 && offer.timeslices < 0) {
+      O2_SIGNPOST_END(quota, oid, "handleExpired", "Offer %d does not have any more resources. Marking it as invalid.", ref.index);
       offer.valid = false;
       offer.score = OfferScore::Unneeded;
       continue;
@@ -297,13 +316,14 @@ void ComputingQuotaEvaluator::handleExpired(std::function<void(ComputingQuotaOff
     // api.
     O2_SIGNPOST_END(quota, oid, "handleExpired", "Offer %d expired. Giving back %llu MB, %d cores and %llu timeslices",
                     ref.index, offer.sharedMemory / 1000000, offer.cpu, offer.timeslices);
-    assert(offer.sharedMemory >= 0);
-    mStats.totalExpiredBytes += offer.sharedMemory;
+    mStats.totalExpiredBytes += std::max<int64_t>(offer.sharedMemory, 0);
+    mStats.totalExpiredTimeslices += std::max<int64_t>(offer.timeslices, 0);
     mStats.totalExpiredOffers++;
     expirator(offer, mStats);
     // driverClient.tell("expired shmem {}", offer.sharedMemory);
     // driverClient.tell("expired cpu {}", offer.cpu);
     offer.sharedMemory = -1;
+    offer.timeslices = -1;
     offer.valid = false;
     offer.score = OfferScore::Unneeded;
   }

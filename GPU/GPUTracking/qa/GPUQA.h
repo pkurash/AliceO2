@@ -86,6 +86,7 @@ namespace o2::gpu
 class GPUChainTracking;
 struct GPUParam;
 struct GPUTPCMCInfo;
+struct checkClusterStateResult;
 namespace internal
 {
 struct GPUQAGarbageCollection;
@@ -230,6 +231,9 @@ class GPUQA
   const auto& GetClusterLabels();
   bool mcPresent();
 
+  template <bool COUNT = false, class T = void>
+  checkClusterStateResult checkClusterState(uint32_t attach, T* counts = nullptr) const;
+
   GPUChainTracking* mTracking;
   const GPUSettingsQA& mConfig;
   const GPUParam* mParam;
@@ -256,7 +260,7 @@ class GPUQA
   std::vector<additionalClusterParameters> mClusterParam;
   int32_t mNTotalFakes = 0;
 
-  TH1F* mEff[5][2][2][5]; // eff,clone,fake,all,all-fake - findable - secondaries - y,z,phi,eta,pt - work,result
+  TH1F* mEff[6][2][2][5]; // eff,clone,fake,all,all-fake - findable - secondaries - y,z,phi,eta,pt - work,result
   TGraphAsymmErrors* mEffResult[4][2][2][5];
   TCanvas* mCEff[6];
   TPad* mPEff[6][4];
@@ -311,6 +315,17 @@ class GPUQA
   TH2F* mClXY;
   TCanvas* mCClXY;
   TPad* mPClXY;
+
+  TH2F* mClRej[3];
+  TH1D* mClRejP;
+  TCanvas* mCClRej[3];
+  TCanvas* mCClRejP;
+  TPad* mPClRej[3];
+  TPad* mPClRejP;
+
+  TH2F* mPadRow[2];
+  TCanvas* mCPadRow[2];
+  TPad* mPPadRow[2];
 
   std::vector<TH2F*> mHistClusterCount;
 
