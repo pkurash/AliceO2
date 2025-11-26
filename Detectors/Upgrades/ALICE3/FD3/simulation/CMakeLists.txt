@@ -19,4 +19,5 @@ o2_add_library(FD3Simulation
 o2_target_root_dictionary(FD3Simulation
                           HEADERS include/FD3Simulation/Detector.h
 		                  include/FD3Simulation/DigitizationConstants.h
+				  include/FD3Simulation/FD3DigParam.h
 			          include/FD3Simulation/Digitizer.h)

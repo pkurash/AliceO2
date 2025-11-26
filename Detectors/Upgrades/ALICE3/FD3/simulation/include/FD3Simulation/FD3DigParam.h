@@ -41,14 +41,6 @@ struct FD3DigParam : o2::conf::ConfigurableParamHelper<FD3DigParam> {
   float slopeRings = 4.7942e+08;
   float mpvRings = -6.38203e-08;
   float sigmaRings = 2.12167e-09;
-  // For ring 5
-  // float offsetRing5 = 16.38e-09;
-  // float normRing5base = 1.1680805e-12;
-  // float getNormRing5() const { return normRing5base * adcChannelsPerMip / 16; }
-  // float constRing5 = -66.76;
-  // float slopeRing5 = 9.43117e+08;
-  // float mpvRing5 = -6.44167e-08;
-  // float sigmaRing5 = 2.3621e-09;
 
   float timeShiftCfd = 5.3;                                                      // TODO: adjust after FD3 with FEE measurements are done
   float singleMipThreshold = 3.0;                                                // in [MeV] of deposited energy

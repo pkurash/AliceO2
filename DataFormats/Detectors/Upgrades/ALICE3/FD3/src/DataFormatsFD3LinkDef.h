@@ -17,5 +17,18 @@
 
 #pragma link C++ class o2::fd3::Hit + ;
 #pragma link C++ class vector < o2::fd3::Hit> + ;
+#include "SimulationDataFormat/MCTruthContainer.h"
+#pragma link C++ class o2::dataformats::MCTruthContainer < o2::fd3::MCLabel> + ;
+
+#pragma link C++ class o2::fd3::ChannelData + ;
+#pragma link C++ class o2::fd3::Digit + ;
+#pragma link C++ class o2::fd3::DetTrigInput + ;
+#pragma link C++ class std::vector < o2::fd3::ChannelData> + ;
+#pragma link C++ class std::vector < o2::fd3::DetTrigInput> + ;
+#pragma link C++ class std::vector < o2::fd3::Digit> + ;
+
+#pragma link C++ class o2::fd3::CTFHeader + ;
+#pragma link C++ class o2::fd3::CTF + ;
+#pragma link C++ class o2::ctf::EncodedBlocks < o2::fd3::CTFHeader, 8, uint32_t> + ;
 
 #endif
