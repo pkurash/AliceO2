@@ -16,7 +16,7 @@
 #include "Framework/ConfigParamRegistry.h"
 #include "Framework/ControlService.h"
 #include "Framework/Logger.h"
-#include "FD3Workflow/FD3DigitReaderSpec.h"
+#include "FD3Workflow/DigitReaderSpec.h"
 #include "DataFormatsFD3/Digit.h"
 #include "DataFormatsFD3/ChannelData.h"
 #include "DataFormatsFD3/MCLabel.h"

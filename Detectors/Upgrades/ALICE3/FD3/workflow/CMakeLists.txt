@@ -10,7 +10,7 @@
 # or submit itself to any jurisdiction.
 
 o2_add_library(FD3Workflow
-               SOURCES src/FD3DigitReaderSpec.cxx
+               SOURCES src/DigitReaderSpec.cxx
                        src/FD3DigitWriterSpec.cxx
                PUBLIC_LINK_LIBRARIES O2::DataFormatsFD3
                                      O2::DetectorsCommonDataFormats

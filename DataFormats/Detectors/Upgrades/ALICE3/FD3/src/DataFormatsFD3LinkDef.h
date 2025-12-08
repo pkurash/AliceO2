@@ -17,6 +17,7 @@
 
 #pragma link C++ class o2::fd3::Hit + ;
 #pragma link C++ class vector < o2::fd3::Hit> + ;
+#pragma link C++ class o2::fd3::MCLabel + ;
 #include "SimulationDataFormat/MCTruthContainer.h"
 #pragma link C++ class o2::dataformats::MCTruthContainer < o2::fd3::MCLabel> + ;
 

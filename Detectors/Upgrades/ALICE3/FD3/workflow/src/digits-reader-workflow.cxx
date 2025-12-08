@@ -19,7 +19,7 @@
 #include "Framework/ControlService.h"
 #include "Framework/ConfigParamRegistry.h"
 #include "Framework/Task.h"
-#include "FD3Workflow/FD3DigitReaderSpec.h"
+#include "FD3Workflow/DigitReaderSpec.h"
 #include "DetectorsRaw/HBFUtilsInitializer.h"
 #include "CommonUtils/ConfigurableParam.h"
 

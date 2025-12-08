@@ -118,8 +118,11 @@ class FD3DPLDigitizerTask : public o2::base::BaseDPLDigitizer
     pc.outputs().snapshot(Output{"FD3", "DIGITSBC", 0}, mDigitsBC);
     pc.outputs().snapshot(Output{"FD3", "DIGITSCH", 0}, mDigitsCh);
     pc.outputs().snapshot(Output{"FD3", "TRIGGERINPUT", 0}, mDigitsTrig);
-    if (pc.outputs().isAllowed({"FD3", "DIGITLBL", 0})) {
-      pc.outputs().snapshot(Output{"FD3", "DIGITLBL", 0}, mLabels);
+//    if (pc.outputs().isAllowed({"FD3", "DIGITLBL", 0})) {
+//      pc.outputs().snapshot(Output{"FD3", "DIGITLBL", 0}, mLabels);
+//    }
+    if (pc.outputs().isAllowed({"FD3", "DIGITSMCTR", 0})) {
+      pc.outputs().snapshot(Output{"FD3", "DIGITSMCTR", 0}, mLabels);
     }
     LOG(info) << "FD3: Sending ROMode= " << mROMode << " to GRPUpdater";
     pc.outputs().snapshot(Output{"FD3", "ROMode", 0}, mROMode);
@@ -155,10 +158,10 @@ o2::framework::DataProcessorSpec getFD3DigitizerSpec(int channel, bool mctruth)
   outputs.emplace_back("FD3", "DIGITSCH", 0, Lifetime::Timeframe);
   outputs.emplace_back("FD3", "TRIGGERINPUT", 0, Lifetime::Timeframe);
   if (mctruth) {
-    outputs.emplace_back("FD3", "DIGITLBL", 0, Lifetime::Timeframe);
+//    outputs.emplace_back("FD3", "DIGITLBL", 0, Lifetime::Timeframe);
+    outputs.emplace_back("FD3", "DIGITSMCTR", 0, Lifetime::Timeframe);
   }
   outputs.emplace_back("FD3", "ROMode", 0, Lifetime::Timeframe);
-  outputs.emplace_back("FD3", "DIGITSMCTR", 0, Lifetime::Timeframe);
 
   return DataProcessorSpec{
     "FD3Digitizer",

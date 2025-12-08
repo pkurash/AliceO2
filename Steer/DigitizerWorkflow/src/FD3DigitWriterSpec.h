@@ -40,8 +40,8 @@ o2::framework::DataProcessorSpec getFD3DigitWriterSpec(bool mctruth = true)
                                 BranchDefinition<std::vector<o2::fd3::Digit>>{InputSpec{"fd3digitBCinput", "FD3", "DIGITSBC"}, "FD3DigitBC"},
                                 BranchDefinition<std::vector<o2::fd3::ChannelData>>{InputSpec{"fd3digitChinput", "FD3", "DIGITSCH"}, "FD3DigitCh"},
                                 BranchDefinition<std::vector<o2::fd3::DetTrigInput>>{InputSpec{"fd3digitTrinput", "FD3", "TRIGGERINPUT"}, "TRIGGERINPUT"},
-                                BranchDefinition<o2::dataformats::MCTruthContainer<o2::ft0::MCLabel>>{InputSpec{"FT0labelinput", "FT0", "DIGITSMCTR"}, "FT0DIGITSMCTR", mctruth ? 1 : 0},
-                                BranchDefinition<o2::dataformats::MCTruthContainer<o2::fd3::MCLabel>>{InputSpec{"fd3labelinput", "FD3", "DIGITLBL"}, "FD3DigitLabels", mctruth ? 1 : 0})();
+//                                BranchDefinition<o2::dataformats::MCTruthContainer<o2::fd3::MCLabel>>{InputSpec{"fd3labelinput", "FD3", "DIGITLBL"}, "FD3DigitLabels", mctruth ? 1 : 0})();
+                                BranchDefinition<o2::dataformats::MCTruthContainer<o2::fd3::MCLabel>>{InputSpec{"fd3labelinput", "FD3", "DIGITSMCTR"}, "FD3DigitLabels", mctruth ? 1 : 0})();
 }
 
 } // namespace fd3
