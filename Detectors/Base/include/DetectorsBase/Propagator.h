@@ -76,11 +76,19 @@ class PropagatorImpl
                                  value_type maxSnp = MAX_SIN_PHI, value_type maxStep = MAX_STEP, MatCorrType matCorr = MatCorrType::USEMatCorrLUT,
                                  track::TrackLTIntegral* tofInfo = nullptr, int signCorr = 0) const;
 
+  GPUd() bool PropagateToXBxByBz(TrackParCov_t& track, TrackPar_t& linRef, value_type x,
+                                 value_type maxSnp = MAX_SIN_PHI, value_type maxStep = MAX_STEP, MatCorrType matCorr = MatCorrType::USEMatCorrLUT,
+                                 track::TrackLTIntegral* tofInfo = nullptr, int signCorr = 0) const;
+
   GPUd() bool PropagateToXBxByBz(TrackPar_t& track, value_type x,
                                  value_type maxSnp = MAX_SIN_PHI, value_type maxStep = MAX_STEP, MatCorrType matCorr = MatCorrType::USEMatCorrLUT,
                                  track::TrackLTIntegral* tofInfo = nullptr, int signCorr = 0) const;
 
   GPUd() bool propagateToX(TrackParCov_t& track, value_type x, value_type bZ,
+                           value_type maxSnp = MAX_SIN_PHI, value_type maxStep = MAX_STEP, MatCorrType matCorr = MatCorrType::USEMatCorrLUT,
+                           track::TrackLTIntegral* tofInfo = nullptr, int signCorr = 0) const;
+
+  GPUd() bool propagateToX(TrackParCov_t& track, TrackPar_t& linRef, value_type x, value_type bZ,
                            value_type maxSnp = MAX_SIN_PHI, value_type maxStep = MAX_STEP, MatCorrType matCorr = MatCorrType::USEMatCorrLUT,
                            track::TrackLTIntegral* tofInfo = nullptr, int signCorr = 0) const;
 
@@ -95,8 +103,31 @@ class PropagatorImpl
     return bzOnly ? propagateToX(track, x, getBz(track.getXYZGlo()), maxSnp, maxStep, matCorr, tofInfo, signCorr) : PropagateToXBxByBz(track, x, maxSnp, maxStep, matCorr, tofInfo, signCorr);
   }
 
+  GPUd() bool propagateToX(TrackParCov_t& track, TrackPar_t* linRef, value_type x, value_type bZ,
+                           value_type maxSnp = MAX_SIN_PHI, value_type maxStep = MAX_STEP, MatCorrType matCorr = MatCorrType::USEMatCorrLUT,
+                           track::TrackLTIntegral* tofInfo = nullptr, int signCorr = 0) const
+  {
+    return linRef ? propagateToX(track, *linRef, x, bZ, maxSnp, maxStep, matCorr, tofInfo, signCorr) : propagateToX(track, x, bZ, maxSnp, maxStep, matCorr, tofInfo, signCorr);
+  }
+
+  GPUd() bool PropagateToXBxByBz(TrackParCov_t& track, TrackPar_t* linRef, value_type x,
+                                 value_type maxSnp = MAX_SIN_PHI, value_type maxStep = MAX_STEP, MatCorrType matCorr = MatCorrType::USEMatCorrLUT,
+                                 track::TrackLTIntegral* tofInfo = nullptr, int signCorr = 0) const
+  {
+    return linRef ? PropagateToXBxByBz(track, *linRef, x, maxSnp, maxStep, matCorr, tofInfo, signCorr) : PropagateToXBxByBz(track, x, maxSnp, maxStep, matCorr, tofInfo, signCorr);
+  }
+
+  GPUd() bool propagateTo(TrackParCov_t& track, TrackPar_t* linRef, value_type x, bool bzOnly = false, value_type maxSnp = MAX_SIN_PHI, value_type maxStep = MAX_STEP,
+                          MatCorrType matCorr = MatCorrType::USEMatCorrLUT, track::TrackLTIntegral* tofInfo = nullptr, int signCorr = 0) const
+  {
+    return bzOnly ? propagateToX(track, linRef, x, getBz(track.getXYZGlo()), maxSnp, maxStep, matCorr, tofInfo, signCorr) : PropagateToXBxByBz(track, linRef, x, maxSnp, maxStep, matCorr, tofInfo, signCorr);
+  }
+
   template <typename track_T>
   GPUd() bool propagateToAlphaX(track_T& track, value_type alpha, value_type x, bool bzOnly = false, value_type maxSnp = MAX_SIN_PHI, value_type maxStep = MAX_STEP, int minSteps = 1,
+                                MatCorrType matCorr = MatCorrType::USEMatCorrLUT, track::TrackLTIntegral* tofInfo = nullptr, int signCorr = 0) const;
+
+  GPUd() bool propagateToAlphaX(TrackParCov_t& track, TrackPar_t* linRef, value_type alpha, value_type x, bool bzOnly = false, value_type maxSnp = MAX_SIN_PHI, value_type maxStep = MAX_STEP, int minSteps = 1,
                                 MatCorrType matCorr = MatCorrType::USEMatCorrLUT, track::TrackLTIntegral* tofInfo = nullptr, int signCorr = 0) const;
 
   template <typename track_T>
