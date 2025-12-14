@@ -40,13 +40,13 @@
 #include <algorithm>
 #include <filesystem>
 #include <boost/algorithm/string.hpp>
-#include <boost/asio/ip/host_name.hpp>
 #include <iostream>
 #include <mutex>
 #include <boost/interprocess/sync/named_semaphore.hpp>
 #include <regex>
 #include <cstdio>
 #include <string>
+#include <TAlienUserAgent.h>
 #include <unordered_set>
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
@@ -117,13 +117,7 @@ CcdbApi::~CcdbApi()
 
 void CcdbApi::setUniqueAgentID()
 {
-  std::string host = boost::asio::ip::host_name();
-  char const* jobID = getenv("ALIEN_PROC_ID");
-  if (jobID) {
-    mUniqueAgentID = fmt::format("{}-{}-{}-{}", host, getCurrentTimestamp() / 1000, o2::utils::Str::getRandomString(6), jobID);
-  } else {
-    mUniqueAgentID = fmt::format("{}-{}-{}", host, getCurrentTimestamp() / 1000, o2::utils::Str::getRandomString(6));
-  }
+  mUniqueAgentID = TAlienUserAgent::BasedOnEnvironment().ToString();
 }
 
 bool CcdbApi::checkAlienToken()
