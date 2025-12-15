@@ -496,6 +496,7 @@ int main(int argc, char* argv[])
       // this loop makes sure that the first collision is within the range of orbits asked (if noEmptyTF is enabled)
       do {
         sampler->setFirstIR(o2::InteractionRecord(options.firstBC, orbitstart));
+        sampler->init();
         record = sampler->generateCollisionTime();
       } while (options.noEmptyTF && usetimeframelength && record.orbit >= orbitstart + orbits_total);
       int count = 0;

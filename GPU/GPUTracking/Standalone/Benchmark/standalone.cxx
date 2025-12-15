@@ -371,48 +371,45 @@ int32_t SetupReconstruction()
     procSet.runMC = true;
   }
 
-  steps.steps = GPUDataTypes::RecoStep::AllRecoSteps;
+  steps.steps = gpudatatypes::RecoStep::AllRecoSteps;
   if (configStandalone.runTRD != -1) {
-    steps.steps.setBits(GPUDataTypes::RecoStep::TRDTracking, configStandalone.runTRD > 0);
+    steps.steps.setBits(gpudatatypes::RecoStep::TRDTracking, configStandalone.runTRD > 0);
   } else if (chainTracking->GetTRDGeometry() == nullptr) {
-    steps.steps.setBits(GPUDataTypes::RecoStep::TRDTracking, false);
-  }
-  if (configStandalone.rundEdx != -1) {
-    steps.steps.setBits(GPUDataTypes::RecoStep::TPCdEdx, configStandalone.rundEdx > 0);
+    steps.steps.setBits(gpudatatypes::RecoStep::TRDTracking, false);
   }
   if (configStandalone.runCompression != -1) {
-    steps.steps.setBits(GPUDataTypes::RecoStep::TPCCompression, configStandalone.runCompression > 0);
+    steps.steps.setBits(gpudatatypes::RecoStep::TPCCompression, configStandalone.runCompression > 0);
   }
   if (configStandalone.runTransformation != -1) {
-    steps.steps.setBits(GPUDataTypes::RecoStep::TPCConversion, configStandalone.runTransformation > 0);
+    steps.steps.setBits(gpudatatypes::RecoStep::TPCConversion, configStandalone.runTransformation > 0);
   }
-  steps.steps.setBits(GPUDataTypes::RecoStep::Refit, configStandalone.runRefit);
+  steps.steps.setBits(gpudatatypes::RecoStep::Refit, configStandalone.runRefit);
   if (!configStandalone.runMerger) {
-    steps.steps.setBits(GPUDataTypes::RecoStep::TPCMerging, false);
-    steps.steps.setBits(GPUDataTypes::RecoStep::TRDTracking, false);
-    steps.steps.setBits(GPUDataTypes::RecoStep::TPCdEdx, false);
-    steps.steps.setBits(GPUDataTypes::RecoStep::TPCCompression, false);
-    steps.steps.setBits(GPUDataTypes::RecoStep::Refit, false);
+    steps.steps.setBits(gpudatatypes::RecoStep::TPCMerging, false);
+    steps.steps.setBits(gpudatatypes::RecoStep::TRDTracking, false);
+    steps.steps.setBits(gpudatatypes::RecoStep::TPCdEdx, false);
+    steps.steps.setBits(gpudatatypes::RecoStep::TPCCompression, false);
+    steps.steps.setBits(gpudatatypes::RecoStep::Refit, false);
   }
 
   if (configStandalone.TF.bunchSim || configStandalone.TF.nMerge) {
-    steps.steps.setBits(GPUDataTypes::RecoStep::TRDTracking, false);
+    steps.steps.setBits(gpudatatypes::RecoStep::TRDTracking, false);
   }
-  steps.inputs.set(GPUDataTypes::InOutType::TPCClusters, GPUDataTypes::InOutType::TRDTracklets);
-  steps.steps.setBits(GPUDataTypes::RecoStep::TPCDecompression, false);
-  steps.inputs.setBits(GPUDataTypes::InOutType::TPCCompressedClusters, false);
+  steps.inputs.set(gpudatatypes::InOutType::TPCClusters, gpudatatypes::InOutType::TRDTracklets);
+  steps.steps.setBits(gpudatatypes::RecoStep::TPCDecompression, false);
+  steps.inputs.setBits(gpudatatypes::InOutType::TPCCompressedClusters, false);
   if (grp.doCompClusterDecode) {
-    steps.inputs.setBits(GPUDataTypes::InOutType::TPCCompressedClusters, true);
-    steps.inputs.setBits(GPUDataTypes::InOutType::TPCClusters, false);
-    steps.steps.setBits(GPUDataTypes::RecoStep::TPCCompression, false);
-    steps.steps.setBits(GPUDataTypes::RecoStep::TPCClusterFinding, false);
-    steps.steps.setBits(GPUDataTypes::RecoStep::TPCDecompression, true);
-    steps.outputs.setBits(GPUDataTypes::InOutType::TPCCompressedClusters, false);
+    steps.inputs.setBits(gpudatatypes::InOutType::TPCCompressedClusters, true);
+    steps.inputs.setBits(gpudatatypes::InOutType::TPCClusters, false);
+    steps.steps.setBits(gpudatatypes::RecoStep::TPCCompression, false);
+    steps.steps.setBits(gpudatatypes::RecoStep::TPCClusterFinding, false);
+    steps.steps.setBits(gpudatatypes::RecoStep::TPCDecompression, true);
+    steps.outputs.setBits(gpudatatypes::InOutType::TPCCompressedClusters, false);
   } else if (grp.needsClusterer) {
-    steps.inputs.setBits(GPUDataTypes::InOutType::TPCRaw, true);
-    steps.inputs.setBits(GPUDataTypes::InOutType::TPCClusters, false);
+    steps.inputs.setBits(gpudatatypes::InOutType::TPCRaw, true);
+    steps.inputs.setBits(gpudatatypes::InOutType::TPCClusters, false);
   } else {
-    steps.steps.setBits(GPUDataTypes::RecoStep::TPCClusterFinding, false);
+    steps.steps.setBits(gpudatatypes::RecoStep::TPCClusterFinding, false);
   }
 
   if (configStandalone.recoSteps >= 0) {
@@ -423,33 +420,25 @@ int32_t SetupReconstruction()
   }
 
   steps.outputs.clear();
-  steps.outputs.setBits(GPUDataTypes::InOutType::TPCMergedTracks, steps.steps.isSet(GPUDataTypes::RecoStep::TPCMerging));
-  steps.outputs.setBits(GPUDataTypes::InOutType::TPCCompressedClusters, steps.steps.isSet(GPUDataTypes::RecoStep::TPCCompression));
-  steps.outputs.setBits(GPUDataTypes::InOutType::TRDTracks, steps.steps.isSet(GPUDataTypes::RecoStep::TRDTracking));
-  steps.outputs.setBits(GPUDataTypes::InOutType::TPCClusters, steps.steps.isSet(GPUDataTypes::RecoStep::TPCClusterFinding));
+  steps.outputs.setBits(gpudatatypes::InOutType::TPCMergedTracks, steps.steps.isSet(gpudatatypes::RecoStep::TPCMerging));
+  steps.outputs.setBits(gpudatatypes::InOutType::TPCCompressedClusters, steps.steps.isSet(gpudatatypes::RecoStep::TPCCompression));
+  steps.outputs.setBits(gpudatatypes::InOutType::TRDTracks, steps.steps.isSet(gpudatatypes::RecoStep::TRDTracking));
+  steps.outputs.setBits(gpudatatypes::InOutType::TPCClusters, steps.steps.isSet(gpudatatypes::RecoStep::TPCClusterFinding));
 
-  if (steps.steps.isSet(GPUDataTypes::RecoStep::TRDTracking)) {
+  if (steps.steps.isSet(gpudatatypes::RecoStep::TRDTracking)) {
     if (procSet.createO2Output && !procSet.trdTrackModelO2) {
       procSet.createO2Output = 1; // Must not be 2, to make sure TPC GPU tracks are still available for TRD
     }
   }
 
-  bool runAsyncQA = procSet.runQA && !configStandalone.testSyncAsyncQcInSync;
-  if (configStandalone.testSyncAsync || configStandalone.testSync) {
-    // Set settings for synchronous
-    if (configStandalone.rundEdx == -1) {
-      steps.steps.setBits(GPUDataTypes::RecoStep::TPCdEdx, 0);
+  // Set settings for synchronous
+  GPUChainTracking::ApplySyncSettings(procSet, recSet, steps.steps, configStandalone.testSyncAsync || configStandalone.testSync, configStandalone.rundEdx);
+  int32_t runAsyncQA = procSet.runQA && !configStandalone.testSyncAsyncQcInSync ? procSet.runQA : 0;
+  if (configStandalone.testSyncAsync) {
+    procSet.eventDisplay = nullptr;
+    if (!configStandalone.testSyncAsyncQcInSync) {
+      procSet.runQA = false;
     }
-    recSet.useMatLUT = false;
-    if (configStandalone.testSyncAsync) {
-      procSet.eventDisplay = nullptr;
-      if (!configStandalone.testSyncAsyncQcInSync) {
-        procSet.runQA = false;
-      }
-    }
-  }
-  if (configStandalone.proc.rtc.optSpecialCode == -1) {
-    configStandalone.proc.rtc.optSpecialCode = configStandalone.testSyncAsync || configStandalone.testSync;
   }
 
   rec->SetSettings(&grp, &recSet, &procSet, &steps);
@@ -458,25 +447,24 @@ int32_t SetupReconstruction()
   }
   if (configStandalone.testSyncAsync) { // TODO: Add --async mode / flag
     // Set settings for asynchronous
-    steps.steps.setBits(GPUDataTypes::RecoStep::TPCDecompression, true);
-    steps.steps.setBits(GPUDataTypes::RecoStep::TPCdEdx, true);
-    steps.steps.setBits(GPUDataTypes::RecoStep::TPCCompression, false);
-    steps.steps.setBits(GPUDataTypes::RecoStep::TPCClusterFinding, false);
-    steps.inputs.setBits(GPUDataTypes::InOutType::TPCRaw, false);
-    steps.inputs.setBits(GPUDataTypes::InOutType::TPCClusters, false);
-    steps.inputs.setBits(GPUDataTypes::InOutType::TPCCompressedClusters, true);
-    steps.outputs.setBits(GPUDataTypes::InOutType::TPCCompressedClusters, false);
+    steps.steps.setBits(gpudatatypes::RecoStep::TPCDecompression, true);
+    steps.steps.setBits(gpudatatypes::RecoStep::TPCdEdx, true);
+    steps.steps.setBits(gpudatatypes::RecoStep::TPCCompression, false);
+    steps.steps.setBits(gpudatatypes::RecoStep::TPCClusterFinding, false);
+    steps.inputs.setBits(gpudatatypes::InOutType::TPCRaw, false);
+    steps.inputs.setBits(gpudatatypes::InOutType::TPCClusters, false);
+    steps.inputs.setBits(gpudatatypes::InOutType::TPCCompressedClusters, true);
+    steps.outputs.setBits(gpudatatypes::InOutType::TPCCompressedClusters, false);
     procSet.runMC = false;
     procSet.runQA = runAsyncQA;
     procSet.eventDisplay = eventDisplay.get();
     procSet.runCompressionStatistics = 0;
-    procSet.rtc.optSpecialCode = 0;
     if (recSet.tpc.rejectionStrategy >= GPUSettings::RejectionStrategyB) {
       procSet.tpcInputWithClusterRejection = 1;
     }
     recSet.tpc.disableRefitAttachment = 0xFF;
     recSet.maxTrackQPtB5 = CAMath::Min(recSet.maxTrackQPtB5, recSet.tpc.rejectQPtB5);
-    recSet.useMatLUT = true;
+    GPUChainTracking::ApplySyncSettings(procSet, recSet, steps.steps, false, configStandalone.rundEdx);
     recAsync->SetSettings(&grp, &recSet, &procSet, &steps);
   }
 
@@ -736,7 +724,7 @@ int32_t main(int argc, char** argv)
   eventsDir = std::string(configStandalone.absoluteEventsDir ? "" : "events/") + configStandalone.eventsDir + "/";
 
   GPUSettingsDeviceBackend deviceSet;
-  deviceSet.deviceType = configStandalone.runGPU ? GPUDataTypes::GetDeviceType(configStandalone.gpuType.c_str()) : GPUDataTypes::DeviceType::CPU;
+  deviceSet.deviceType = configStandalone.runGPU ? gpudatatypes::GetDeviceType(configStandalone.gpuType.c_str()) : gpudatatypes::DeviceType::CPU;
   deviceSet.forceDeviceType = configStandalone.runGPUforce;
   deviceSet.master = nullptr;
   recUnique.reset(GPUReconstruction::CreateInstance(deviceSet));
