@@ -595,23 +595,16 @@ o2::framework::ServiceSpec ArrowSupport::arrowBackendSpec()
       ac.providedTIMs.clear();
       ac.requestedTIMs.clear();
 
-
       auto inputSpecLessThan = [](InputSpec const& lhs, InputSpec const& rhs) { return DataSpecUtils::describe(lhs) < DataSpecUtils::describe(rhs); };
       auto outputSpecLessThan = [](OutputSpec const& lhs, OutputSpec const& rhs) { return DataSpecUtils::describe(lhs) < DataSpecUtils::describe(rhs); };
 
       if (builder != workflow.end()) {
         // collect currently requested IDXs
         ac.requestedIDXs.clear();
-        for (auto& d : workflow) {
-          if (d.name == builder->name) {
-            continue;
-          }
-          for (auto& i : d.inputs) {
-            if (DataSpecUtils::partialMatch(i, header::DataOrigin{"IDX"})) {
-              auto copy = i;
-              DataSpecUtils::updateInputList(ac.requestedIDXs, std::move(copy));
-            }
-          }
+        for (auto& d : workflow | views::exclude_by_name(builder->name)) {
+          d.inputs |
+            views::partial_match_filter(header::DataOrigin{"IDX"}) |
+            sinks::update_input_list{ac.requestedIDXs};
         }
         // recreate inputs and outputs
         builder->inputs.clear();
@@ -624,37 +617,27 @@ o2::framework::ServiceSpec ArrowSupport::arrowBackendSpec()
 
       if (spawner != workflow.end()) {
         // collect currently requested DYNs
-        for (auto& d : workflow) {
-          if (d.name == spawner->name) {
-            continue;
-          }
-          for (auto const& i : d.inputs) {
-            if (DataSpecUtils::partialMatch(i, header::DataOrigin{"DYN"})) {
-              auto copy = i;
-              DataSpecUtils::updateInputList(ac.requestedDYNs, std::move(copy));
-            }
-          }
-          for (auto const& o : d.outputs) {
-            if (DataSpecUtils::partialMatch(o, header::DataOrigin{"DYN"})) {
-              ac.providedDYNs.emplace_back(o);
-            }
-          }
+        for (auto& d : workflow | views::exclude_by_name(spawner->name)) {
+          d.inputs |
+            views::partial_match_filter(header::DataOrigin{"DYN"}) |
+            sinks::update_input_list{ac.requestedDYNs};
+          d.outputs |
+            views::partial_match_filter(header::DataOrigin{"DYN"}) |
+            sinks::append_to{ac.providedDYNs};
         }
         std::sort(ac.requestedDYNs.begin(), ac.requestedDYNs.end(), inputSpecLessThan);
         std::sort(ac.providedDYNs.begin(), ac.providedDYNs.end(), outputSpecLessThan);
         ac.spawnerInputs.clear();
-        for (auto& input : ac.requestedDYNs) {
-          if (std::none_of(ac.providedDYNs.begin(), ac.providedDYNs.end(), [&input](auto const& x) { return DataSpecUtils::match(input, x); })) {
-            ac.spawnerInputs.emplace_back(input);
-          }
-        }
+        ac.requestedDYNs |
+          views::filter_not_matching(ac.providedDYNs) |
+          sinks::append_to{ac.spawnerInputs};
         // recreate inputs and outputs
         spawner->outputs.clear();
         spawner->inputs.clear();
+        AnalysisSupportHelpers::addMissingOutputsToSpawner({}, ac.spawnerInputs, ac.requestedAODs, *spawner);
         // replace AlgorithmSpec
         // FIXME: it should be made more generic, so it does not need replacement...
         spawner->algorithm = PluginManager::loadAlgorithmFromPlugin("O2FrameworkOnDemandTablesSupport", "ExtendedTableSpawner", ctx);
-        AnalysisSupportHelpers::addMissingOutputsToSpawner({}, ac.spawnerInputs, ac.requestedAODs, *spawner);
       }
 
       if (analysisCCDB != workflow.end()) {
@@ -675,7 +658,7 @@ o2::framework::ServiceSpec ArrowSupport::arrowBackendSpec()
         // FIXME: it should be made more generic, so it does not need replacement...
         // FIXME how can I make the lookup depend on DYN tables as well??
         analysisCCDB->algorithm = PluginManager::loadAlgorithmFromPlugin("O2FrameworkCCDBSupport", "AnalysisCCDBFetcherPlugin", ctx);
-        AnalysisSupportHelpers::addMissingOutputsToAnalysisCCDBFetcher({}, ac.analysisCCDBInputs, ac.requestedAODs, ac.requestedDYNs, *analysisCCDB);
+        AnalysisSupportHelpers::addMissingOutputsToBuilder(ac.analysisCCDBInputs, ac.requestedAODs, ac.requestedDYNs, *analysisCCDB);
       }
 
       if (writer != workflow.end()) {
@@ -686,12 +669,9 @@ o2::framework::ServiceSpec ArrowSupport::arrowBackendSpec()
         // If reader and/or builder were adjusted, remove unneeded outputs
         // update currently requested AODs
         for (auto& d : workflow) {
-          for (auto const& i : d.inputs) {
-            if (DataSpecUtils::partialMatch(i, AODOrigins)) {
-              auto copy = i;
-              DataSpecUtils::updateInputList(ac.requestedAODs, std::move(copy));
-            }
-          }
+          d.inputs |
+            views::partial_match_filter(AODOrigins) |
+            sinks::update_input_list{ac.requestedAODs};
         }
 
         // remove unmatched outputs
@@ -704,8 +684,6 @@ o2::framework::ServiceSpec ArrowSupport::arrowBackendSpec()
           workflow.erase(reader);
         }
       }
-
-
 
       // replace writer as some outputs may have become dangling and some are now consumed
       auto [outputsInputs, isDangling] = WorkflowHelpers::analyzeOutputs(workflow);

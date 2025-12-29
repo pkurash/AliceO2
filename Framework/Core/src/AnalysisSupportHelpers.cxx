@@ -11,10 +11,7 @@
 
 #include "Framework/AnalysisSupportHelpers.h"
 #include "Framework/DataOutputDirector.h"
-#include "Framework/OutputObjHeader.h"
-#include "Framework/ControlService.h"
-#include "Framework/EndOfStreamContext.h"
-#include "Framework/DeviceSpec.h"
+#include "Framework/DataSpecViews.h"
 #include "Framework/PluginManager.h"
 #include "Framework/ConfigContext.h"
 #include "WorkflowHelpers.h"
@@ -129,30 +126,11 @@ void AnalysisSupportHelpers::addMissingOutputsToReader(std::vector<OutputSpec> c
                                                        std::vector<InputSpec> const& requestedInputs,
                                                        DataProcessorSpec& publisher)
 {
-  auto matchingOutputFor = [](InputSpec const& requested) {
-    return [&requested](OutputSpec const& provided) {
-      return DataSpecUtils::match(requested, provided);
-    };
-  };
-  for (InputSpec const& requested : requestedInputs) {
-    auto provided = std::find_if(providedOutputs.begin(),
-                                 providedOutputs.end(),
-                                 matchingOutputFor(requested));
-
-    if (provided != providedOutputs.end()) {
-      continue;
-    }
-
-    auto inList = std::find_if(publisher.outputs.begin(),
-                               publisher.outputs.end(),
-                               matchingOutputFor(requested));
-    if (inList != publisher.outputs.end()) {
-      continue;
-    }
-
-    auto concrete = DataSpecUtils::asConcreteDataMatcher(requested);
-    publisher.outputs.emplace_back(concrete.origin, concrete.description, concrete.subSpec, requested.lifetime, requested.metadata);
-  }
+  requestedInputs |
+    views::filter_not_matching(providedOutputs) |   // filter the inputs that are already provided
+    views::filter_not_matching(publisher.outputs) | // filter the inputs that are already covered
+    views::input_to_output_specs() |
+    sinks::append_to{publisher.outputs}; // append them to the publisher outputs
 }
 
 void AnalysisSupportHelpers::addMissingOutputsToSpawner(std::vector<OutputSpec> const& providedSpecials,
@@ -160,25 +138,20 @@ void AnalysisSupportHelpers::addMissingOutputsToSpawner(std::vector<OutputSpec> 
                                                         std::vector<InputSpec>& requestedAODs,
                                                         DataProcessorSpec& publisher)
 {
-  for (auto& input : requestedSpecials) {
-    if (std::any_of(providedSpecials.begin(), providedSpecials.end(), [&input](auto const& x) {
-          return DataSpecUtils::match(input, x);
-        })) {
-      continue;
-    }
-    auto concrete = DataSpecUtils::asConcreteDataMatcher(input);
-    publisher.outputs.emplace_back(concrete.origin, concrete.description, concrete.subSpec);
-    for (auto& i : input.metadata) {
-      if ((i.type == VariantType::String) && (i.name.find("input:") != std::string::npos)) {
-        auto spec = DataSpecUtils::fromMetadataString(i.defaultValue.get<std::string>());
-        auto j = std::find(publisher.inputs.begin(), publisher.inputs.end(), spec);
-        if (j == publisher.inputs.end()) {
-          publisher.inputs.push_back(spec);
-        }
-        DataSpecUtils::updateInputList(requestedAODs, std::move(spec));
-      }
-    }
+  requestedSpecials |
+    views::filter_not_matching(providedSpecials) | // filter the inputs that are already provided
+    views::input_to_output_specs() |
+    sinks::append_to{publisher.outputs}; // append them to the publisher outputs
+
+  std::vector<InputSpec> additionalInputs;
+  for (auto& input : requestedSpecials | views::filter_not_matching(providedSpecials)) {
+    input.metadata |
+      views::filter_string_params_with("input:") |
+      views::params_to_input_specs() |
+      sinks::update_input_list{additionalInputs}; // store into a temporary
   }
+  additionalInputs | sinks::update_input_list{requestedAODs};    // update requestedAODs
+  additionalInputs | sinks::update_input_list{publisher.inputs}; // update publisher inputs
 }
 
 void AnalysisSupportHelpers::addMissingOutputsToBuilder(std::vector<InputSpec> const& requestedSpecials,
@@ -186,52 +159,26 @@ void AnalysisSupportHelpers::addMissingOutputsToBuilder(std::vector<InputSpec> c
                                                         std::vector<InputSpec>& requestedDYNs,
                                                         DataProcessorSpec& publisher)
 {
-  for (auto& input : requestedSpecials) {
-    auto concrete = DataSpecUtils::asConcreteDataMatcher(input);
-    publisher.outputs.emplace_back(concrete.origin, concrete.description, concrete.subSpec);
-    for (auto& i : input.metadata) {
-      if ((i.type == VariantType::String) && (i.name.find("input:") != std::string::npos)) {
-        auto spec = DataSpecUtils::fromMetadataString(i.defaultValue.get<std::string>());
-        auto j = std::find_if(publisher.inputs.begin(), publisher.inputs.end(), [&](auto x) { return x.binding == spec.binding; });
-        if (j == publisher.inputs.end()) {
-          publisher.inputs.push_back(spec);
-        }
-        if (DataSpecUtils::partialMatch(spec, AODOrigins)) {
-          DataSpecUtils::updateInputList(requestedAODs, std::move(spec));
-        } else if (DataSpecUtils::partialMatch(spec, header::DataOrigin{"DYN"})) {
-          DataSpecUtils::updateInputList(requestedDYNs, std::move(spec));
-        }
-      }
-    }
-  }
-}
+  requestedSpecials |
+    views::input_to_output_specs() |
+    sinks::append_to{publisher.outputs}; // append them to the publisher outputs
 
-void AnalysisSupportHelpers::addMissingOutputsToAnalysisCCDBFetcher(
-  std::vector<OutputSpec> const& providedSpecials,
-  std::vector<InputSpec> const& requestedSpecials,
-  std::vector<InputSpec>& requestedAODs,
-  std::vector<InputSpec>& requestedDYNs,
-  DataProcessorSpec& publisher)
-{
-  for (auto& input : requestedSpecials) {
-    auto concrete = DataSpecUtils::asConcreteDataMatcher(input);
-    publisher.outputs.emplace_back(concrete.origin, concrete.description, concrete.subSpec);
-    // FIXME: good enough for now...
-    for (auto& i : input.metadata) {
-      if ((i.type == VariantType::String) && (i.name.find("input:") != std::string::npos)) {
-        auto spec = DataSpecUtils::fromMetadataString(i.defaultValue.get<std::string>());
-        auto j = std::find_if(publisher.inputs.begin(), publisher.inputs.end(), [&](auto x) { return x.binding == spec.binding; });
-        if (j == publisher.inputs.end()) {
-          publisher.inputs.push_back(spec);
-        }
-        if (DataSpecUtils::partialMatch(spec, AODOrigins)) {
-          DataSpecUtils::updateInputList(requestedAODs, std::move(spec));
-        } else if (DataSpecUtils::partialMatch(spec, header::DataOrigin{"DYN"})) {
-          DataSpecUtils::updateInputList(requestedDYNs, std::move(spec));
-        }
-      }
-    }
+  std::vector<InputSpec> additionalInputs;
+  for (auto const& input : requestedSpecials) {
+    input.metadata |
+      views::filter_string_params_with("input:") |
+      views::params_to_input_specs() |
+      sinks::update_input_list{additionalInputs}; // store into a temporary
   }
+
+  additionalInputs | sinks::update_input_list{publisher.inputs}; // update publisher inputs
+  // FIXME: until we have a single list of pairs
+  additionalInputs |
+    views::partial_match_filter(AODOrigins) |
+    sinks::update_input_list{requestedAODs}; // update requestedAODs
+  additionalInputs |
+    views::partial_match_filter(header::DataOrigin{"DYN"}) |
+    sinks::update_input_list{requestedDYNs}; // update requestedDYNs
 }
 
 // =============================================================================

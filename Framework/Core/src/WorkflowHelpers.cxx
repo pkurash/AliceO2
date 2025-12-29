@@ -19,7 +19,6 @@
 #include "Framework/DataSpecUtils.h"
 #include "Framework/DataSpecViews.h"
 #include "Framework/DataAllocator.h"
-#include "Framework/ControlService.h"
 #include "Framework/RawDeviceService.h"
 #include "Framework/StringHelpers.h"
 #include "Framework/ChannelSpecHelpers.h"
@@ -157,18 +156,6 @@ int defaultConditionQueryRateMultiplier()
 
 void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext& ctx)
 {
-  auto fakeCallback = AlgorithmSpec{[](InitContext& ic) {
-    LOG(info) << "This is not a real device, merely a placeholder for external inputs";
-    LOG(info) << "To be hidden / removed at some point.";
-    // mark this dummy process as ready-to-quit
-    ic.services().get<ControlService>().readyToQuit(QuitRequest::Me);
-
-    return [](ProcessingContext& pc) {
-      // this callback is never called since there is no expiring input
-      pc.services().get<RawDeviceService>().waitFor(2000);
-    };
-  }};
-
   DataProcessorSpec ccdbBackend{
     .name = "internal-dpl-ccdb-backend",
     .outputs = {},
@@ -281,20 +268,9 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
       processor.options.push_back(ConfigParamSpec{"end-value-enumeration", VariantType::Int64, -1ll, {"final value for the enumeration"}});
       processor.options.push_back(ConfigParamSpec{"step-value-enumeration", VariantType::Int64, 1ll, {"step between one value and the other"}});
     }
-    bool hasTimeframeInputs = false;
-    for (auto& input : processor.inputs) {
-      if (input.lifetime == Lifetime::Timeframe) {
-        hasTimeframeInputs = true;
-        break;
-      }
-    }
-    bool hasTimeframeOutputs = false;
-    for (auto& output : processor.outputs) {
-      if (output.lifetime == Lifetime::Timeframe) {
-        hasTimeframeOutputs = true;
-        break;
-      }
-    }
+    bool hasTimeframeInputs = std::any_of(processor.inputs.begin(), processor.inputs.end(), [](auto const& input) { return input.lifetime == Lifetime::Timeframe; });
+    bool hasTimeframeOutputs = std::any_of(processor.outputs.begin(), processor.outputs.end(), [](auto const& output) { return output.lifetime == Lifetime::Timeframe; });
+
     // A timeframeSink consumes timeframes without creating new
     // timeframe data.
     bool timeframeSink = hasTimeframeInputs && !hasTimeframeOutputs;
@@ -304,14 +280,13 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
         uint32_t hash = runtime_hash(processor.name.c_str());
         bool hasMatch = false;
         ConcreteDataMatcher summaryMatcher = ConcreteDataMatcher{"DPL", "SUMMARY", static_cast<DataAllocator::SubSpecificationType>(hash)};
-        for (auto& output : processor.outputs) {
-          if (DataSpecUtils::match(output, summaryMatcher)) {
-            O2_SIGNPOST_EVENT_EMIT(workflow_helpers, sid, "output enumeration", "%{public}s already there in %{public}s",
-                                   DataSpecUtils::describe(output).c_str(), processor.name.c_str());
-            hasMatch = true;
-            break;
-          }
+        auto summaryOutput = std::find_if(processor.outputs.begin(), processor.outputs.end(), [&summaryMatcher](auto const& output) { return DataSpecUtils::match(output, summaryMatcher); });
+        if (summaryOutput != processor.outputs.end()) {
+          O2_SIGNPOST_EVENT_EMIT(workflow_helpers, sid, "output enumeration", "%{public}s already there in %{public}s",
+                                 DataSpecUtils::describe(*summaryOutput).c_str(), processor.name.c_str());
+          hasMatch = true;
         }
+
         if (!hasMatch) {
           O2_SIGNPOST_EVENT_EMIT(workflow_helpers, sid, "output enumeration", "Adding DPL/SUMMARY/%d to %{public}s", hash, processor.name.c_str());
           processor.outputs.push_back(OutputSpec{{"dpl-summary"}, ConcreteDataMatcher{"DPL", "SUMMARY", static_cast<DataAllocator::SubSpecificationType>(hash)}});
@@ -339,18 +314,12 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
           timer.outputs.emplace_back(OutputSpec{concrete.origin, concrete.description, concrete.subSpec, Lifetime::Enumeration});
         } break;
         case Lifetime::Condition: {
-          for (auto& option : processor.options) {
-            if (option.name == "condition-backend") {
-              hasConditionOption = true;
-              break;
-            }
-          }
-          if (hasConditionOption == false) {
+          requestedCCDBs.emplace_back(input);
+          if ((hasConditionOption == false) && std::none_of(processor.options.begin(), processor.options.end(), [](auto const& option) { return (option.name.compare("condition-backend") == 0); })) {
             processor.options.emplace_back(ConfigParamSpec{"condition-backend", VariantType::String, defaultConditionBackend(), {"URL for CCDB"}});
             processor.options.emplace_back(ConfigParamSpec{"condition-timestamp", VariantType::Int64, 0ll, {"Force timestamp for CCDB lookup"}});
             hasConditionOption = true;
           }
-          requestedCCDBs.emplace_back(input);
         } break;
         case Lifetime::OutOfBand: {
           auto concrete = DataSpecUtils::asConcreteDataMatcher(input);
@@ -422,14 +391,10 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
   ac.requestedTIMs | views::filter_not_matching(ac.providedTIMs) | sinks::append_to{ac.analysisCCDBInputs};
   DeploymentMode deploymentMode = DefaultsHelpers::deploymentMode();
   if (deploymentMode != DeploymentMode::OnlineDDS && deploymentMode != DeploymentMode::OnlineECS) {
-    AnalysisSupportHelpers::addMissingOutputsToAnalysisCCDBFetcher({}, ac.analysisCCDBInputs, ac.requestedAODs, ac.requestedTIMs, analysisCCDBBackend);
+    AnalysisSupportHelpers::addMissingOutputsToBuilder(ac.analysisCCDBInputs, ac.requestedAODs, ac.requestedTIMs, analysisCCDBBackend);
   }
 
-  for (auto& input : ac.requestedDYNs) {
-    if (std::none_of(ac.providedDYNs.begin(), ac.providedDYNs.end(), [&input](auto const& x) { return DataSpecUtils::match(input, x); })) {
-      ac.spawnerInputs.emplace_back(input);
-    }
-  }
+  ac.requestedDYNs | views::filter_not_matching(ac.providedDYNs) | sinks::append_to{ac.spawnerInputs};
 
   DataProcessorSpec aodSpawner{
     "internal-dpl-aod-spawner",
@@ -440,6 +405,9 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
   AnalysisSupportHelpers::addMissingOutputsToSpawner({}, ac.spawnerInputs, ac.requestedAODs, aodSpawner);
 
   AnalysisSupportHelpers::addMissingOutputsToReader(ac.providedAODs, ac.requestedAODs, aodReader);
+
+  std::sort(requestedCCDBs.begin(), requestedCCDBs.end(), inputSpecLessThan);
+  std::sort(providedCCDBs.begin(), providedCCDBs.end(), outputSpecLessThan);
   AnalysisSupportHelpers::addMissingOutputsToReader(providedCCDBs, requestedCCDBs, ccdbBackend);
 
   std::vector<DataProcessorSpec> extraSpecs;

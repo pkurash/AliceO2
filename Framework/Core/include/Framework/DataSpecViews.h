@@ -31,6 +31,32 @@ static auto filter_not_matching(auto const& provided)
   return std::views::filter([&provided](auto const& input) { return std::none_of(provided.begin(), provided.end(), [&input](auto const& output) { return DataSpecUtils::match(input, output); }); });
 }
 
+static auto filter_matching(auto const& provided)
+{
+  return std::views::filter([&provided](auto const& input) { return std::any_of(provided.begin(), provided.end(), [&input](auto const& output) { return DataSpecUtils::match(input, output); }); });
+}
+
+static auto filter_string_params_with(std::string match)
+{
+  return std::views::filter([match](auto const& param) {
+    return (param.type == VariantType::String) && (param.name.find(match) != std::string::npos);
+  });
+}
+
+static auto input_to_output_specs()
+{
+  return std::views::transform([](auto const& input) {
+    auto concrete = DataSpecUtils::asConcreteDataMatcher(input);
+    return OutputSpec{concrete.origin, concrete.description, concrete.subSpec, input.lifetime, input.metadata};
+  });
+}
+
+static auto params_to_input_specs()
+{
+  return std::views::transform([](auto const& param) {
+    return DataSpecUtils::fromMetadataString(param.defaultValue.template get<std::string>());
+  });
+}
 } // namespace o2::framework::views
 //
 namespace o2::framework::sinks
@@ -54,9 +80,24 @@ struct update_input_list {
   template <std::ranges::input_range R>
   friend Container& operator|(R&& r, update_input_list self)
   {
-    for (auto& item : r) {
+    for (auto const& item : r) {
       auto copy = item;
       DataSpecUtils::updateInputList(self.c, std::move(copy));
+    }
+    return self.c;
+  }
+};
+
+template <class Container>
+struct update_output_list {
+  Container& c;
+  // ends the pipeline, returns the container
+  template <std::ranges::input_range R>
+  friend Container& operator|(R&& r, update_output_list self)
+  {
+    for (auto const& item : r) {
+      auto copy = item;
+      DataSpecUtils::updateOutputList(self.c, std::move(copy));
     }
     return self.c;
   }
