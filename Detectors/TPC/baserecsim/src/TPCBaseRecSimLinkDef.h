@@ -1,4 +1,4 @@
-// Copyright 2019-2020 CERN and copyright holders of ALICE O2.
+// Copyright 2019-2025 CERN and copyright holders of ALICE O2.
 // See https://alice-o2.web.cern.ch/copyright for details of the copyright holders.
 // All rights not expressly granted are reserved.
 //
@@ -15,12 +15,13 @@
 #pragma link off all classes;
 #pragma link off all functions;
 
-#pragma link C++ class o2::its::ClustererTask + ;
-#pragma link C++ class o2::its::CookedTracker + ;
-#pragma link C++ class o2::its::CookedConfigParam + ;
-#pragma link C++ class o2::conf::ConfigurableParamHelper < o2::its::CookedConfigParam> + ;
-#pragma link C++ class o2::its::RecoGeomHelper + ;
-#pragma link C++ class o2::its::FastMultEst + ;
-#pragma link C++ class o2::its::FastMultEstConfig + ;
-
+#pragma link C++ enum o2::tpc::PadFlags + ; // enum itself
+#pragma link C++ class std::vector < o2::tpc::PadFlags> + ;
+#pragma link C++ enum o2::tpc::CDBType;
+#pragma link C++ class o2::tpc::CDBInterface;
+#pragma link C++ class o2::tpc::CDBStorage;
+#pragma link C++ class o2::tpc::CalArray < o2::tpc::PadFlags> + ;
+#pragma link C++ class o2::tpc::CalDet < o2::tpc::PadFlags> + ;
+#pragma link C++ class o2::tpc::painter + ;
+#pragma link C++ class o2::tpc::DeadChannelMapCreator + ;
 #endif

@@ -156,6 +156,7 @@ int defaultConditionQueryRateMultiplier()
 
 void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext& ctx)
 {
+  int rateLimitingIPCID = std::stoi(ctx.options().get<std::string>("timeframes-rate-limit-ipcid"));
   DataProcessorSpec ccdbBackend{
     .name = "internal-dpl-ccdb-backend",
     .outputs = {},
@@ -230,25 +231,8 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
                 ConfigParamSpec{"step-value-enumeration", VariantType::Int64, 1ll, {"step between one value and the other"}}},
     .requiredServices = CommonServices::defaultServices("O2FrameworkAnalysisSupport:RunSummary")};
 
-  // AOD reader can be rate limited
-  int rateLimitingIPCID = std::stoi(ctx.options().get<std::string>("timeframes-rate-limit-ipcid"));
-  std::string rateLimitingChannelConfigInput;
-  std::string rateLimitingChannelConfigOutput;
-  bool internalRateLimiting = false;
-
-  // In case we have rate-limiting requested, any device without an input will get one on the special
-  // "DPL/RATE" message.
-  if (rateLimitingIPCID >= 0) {
-    rateLimitingChannelConfigInput = fmt::format("name=metric-feedback,type=pull,method=connect,address=ipc://{}metric-feedback-{},transport=shmem,rateLogging=0",
-                                                 ChannelSpecHelpers::defaultIPCFolder(), rateLimitingIPCID);
-    rateLimitingChannelConfigOutput = fmt::format("name=metric-feedback,type=push,method=bind,address=ipc://{}metric-feedback-{},transport=shmem,rateLogging=0",
-                                                  ChannelSpecHelpers::defaultIPCFolder(), rateLimitingIPCID);
-    internalRateLimiting = true;
-    aodReader.options.emplace_back(ConfigParamSpec{"channel-config", VariantType::String, rateLimitingChannelConfigInput, {"how many timeframes can be in flight at the same time"}});
-  }
-
-  ctx.services().registerService(ServiceRegistryHelpers::handleForService<AnalysisContext>(new AnalysisContext));
-  auto& ac = ctx.services().get<AnalysisContext>();
+  ctx.services().registerService(ServiceRegistryHelpers::handleForService<DanglingEdgesContext>(new DanglingEdgesContext));
+  auto& dec = ctx.services().get<DanglingEdgesContext>();
 
   std::vector<InputSpec> requestedCCDBs;
   std::vector<OutputSpec> providedCCDBs;
@@ -257,7 +241,7 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
     auto& processor = workflow[wi];
     auto name = processor.name;
     auto hash = runtime_hash(name.c_str());
-    ac.outTskMap.push_back({hash, name});
+    dec.outTskMap.push_back({hash, name});
 
     std::string prefix = "internal-dpl-";
     if (processor.inputs.empty() && processor.name.compare(0, prefix.size(), prefix) != 0) {
@@ -274,7 +258,7 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
     // A timeframeSink consumes timeframes without creating new
     // timeframe data.
     bool timeframeSink = hasTimeframeInputs && !hasTimeframeOutputs;
-    if (std::stoi(ctx.options().get<std::string>("timeframes-rate-limit-ipcid")) != -1) {
+    if (rateLimitingIPCID != -1) {
       if (timeframeSink && processor.name.find("internal-dpl-injected-dummy-sink") == std::string::npos) {
         O2_SIGNPOST_ID_GENERATE(sid, workflow_helpers);
         uint32_t hash = runtime_hash(processor.name.c_str());
@@ -336,16 +320,16 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
           break;
       }
       if (DataSpecUtils::partialMatch(input, AODOrigins)) {
-        DataSpecUtils::updateInputList(ac.requestedAODs, InputSpec{input});
+        DataSpecUtils::updateInputList(dec.requestedAODs, InputSpec{input});
       }
       if (DataSpecUtils::partialMatch(input, header::DataOrigin{"DYN"})) {
-        DataSpecUtils::updateInputList(ac.requestedDYNs, InputSpec{input});
+        DataSpecUtils::updateInputList(dec.requestedDYNs, InputSpec{input});
       }
       if (DataSpecUtils::partialMatch(input, header::DataOrigin{"IDX"})) {
-        DataSpecUtils::updateInputList(ac.requestedIDXs, InputSpec{input});
+        DataSpecUtils::updateInputList(dec.requestedIDXs, InputSpec{input});
       }
       if (DataSpecUtils::partialMatch(input, header::DataOrigin{"ATIM"})) {
-        DataSpecUtils::updateInputList(ac.requestedTIMs, InputSpec{input});
+        DataSpecUtils::updateInputList(dec.requestedTIMs, InputSpec{input});
       }
     }
 
@@ -353,16 +337,16 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
 
     for (auto& output : processor.outputs) {
       if (DataSpecUtils::partialMatch(output, AODOrigins)) {
-        ac.providedAODs.emplace_back(output);
+        dec.providedAODs.emplace_back(output);
       } else if (DataSpecUtils::partialMatch(output, header::DataOrigin{"DYN"})) {
-        ac.providedDYNs.emplace_back(output);
+        dec.providedDYNs.emplace_back(output);
       } else if (DataSpecUtils::partialMatch(output, header::DataOrigin{"ATIM"})) {
-        ac.providedTIMs.emplace_back(output);
+        dec.providedTIMs.emplace_back(output);
       } else if (DataSpecUtils::partialMatch(output, header::DataOrigin{"ATSK"})) {
-        ac.providedOutputObjHist.emplace_back(output);
-        auto it = std::find_if(ac.outObjHistMap.begin(), ac.outObjHistMap.end(), [&](auto&& x) { return x.id == hash; });
-        if (it == ac.outObjHistMap.end()) {
-          ac.outObjHistMap.push_back({hash, {output.binding.value}});
+        dec.providedOutputObjHist.emplace_back(output);
+        auto it = std::find_if(dec.outObjHistMap.begin(), dec.outObjHistMap.end(), [&](auto&& x) { return x.id == hash; });
+        if (it == dec.outObjHistMap.end()) {
+          dec.outObjHistMap.push_back({hash, {output.binding.value}});
         } else {
           it->bindings.push_back(output.binding.value);
         }
@@ -375,36 +359,35 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
 
   auto inputSpecLessThan = [](InputSpec const& lhs, InputSpec const& rhs) { return DataSpecUtils::describe(lhs) < DataSpecUtils::describe(rhs); };
   auto outputSpecLessThan = [](OutputSpec const& lhs, OutputSpec const& rhs) { return DataSpecUtils::describe(lhs) < DataSpecUtils::describe(rhs); };
-  std::sort(ac.requestedDYNs.begin(), ac.requestedDYNs.end(), inputSpecLessThan);
-  std::sort(ac.requestedTIMs.begin(), ac.requestedTIMs.end(), inputSpecLessThan);
-  std::sort(ac.providedDYNs.begin(), ac.providedDYNs.end(), outputSpecLessThan);
-  std::sort(ac.providedTIMs.begin(), ac.providedTIMs.end(), outputSpecLessThan);
+  std::sort(dec.requestedDYNs.begin(), dec.requestedDYNs.end(), inputSpecLessThan);
+  std::sort(dec.requestedTIMs.begin(), dec.requestedTIMs.end(), inputSpecLessThan);
+  std::sort(dec.providedDYNs.begin(), dec.providedDYNs.end(), outputSpecLessThan);
+  std::sort(dec.providedTIMs.begin(), dec.providedTIMs.end(), outputSpecLessThan);
 
   DataProcessorSpec indexBuilder{
     "internal-dpl-aod-index-builder",
     {},
     {},
-    PluginManager::loadAlgorithmFromPlugin("O2FrameworkOnDemandTablesSupport", "IndexTableBuilder", ctx), // readers::AODReaderHelpers::indexBuilderCallback(ctx),
+    AlgorithmSpec::dummyAlgorithm(), // real algorithm will be set in adjustTopology
     {}};
-  AnalysisSupportHelpers::addMissingOutputsToBuilder(ac.requestedIDXs, ac.requestedAODs, ac.requestedDYNs, indexBuilder);
+  AnalysisSupportHelpers::addMissingOutputsToBuilder(dec.requestedIDXs, dec.requestedAODs, dec.requestedDYNs, indexBuilder);
 
-  ac.requestedTIMs | views::filter_not_matching(ac.providedTIMs) | sinks::append_to{ac.analysisCCDBInputs};
+  dec.requestedTIMs | views::filter_not_matching(dec.providedTIMs) | sinks::append_to{dec.analysisCCDBInputs};
   DeploymentMode deploymentMode = DefaultsHelpers::deploymentMode();
   if (deploymentMode != DeploymentMode::OnlineDDS && deploymentMode != DeploymentMode::OnlineECS) {
-    AnalysisSupportHelpers::addMissingOutputsToBuilder(ac.analysisCCDBInputs, ac.requestedAODs, ac.requestedTIMs, analysisCCDBBackend);
+    AnalysisSupportHelpers::addMissingOutputsToBuilder(dec.analysisCCDBInputs, dec.requestedAODs, dec.requestedTIMs, analysisCCDBBackend);
   }
 
-  ac.requestedDYNs | views::filter_not_matching(ac.providedDYNs) | sinks::append_to{ac.spawnerInputs};
+  dec.requestedDYNs | views::filter_not_matching(dec.providedDYNs) | sinks::append_to{dec.spawnerInputs};
 
   DataProcessorSpec aodSpawner{
     "internal-dpl-aod-spawner",
     {},
     {},
-    PluginManager::loadAlgorithmFromPlugin("O2FrameworkOnDemandTablesSupport", "ExtendedTableSpawner", ctx), // readers::AODReaderHelpers::aodSpawnerCallback(ctx),
+    AlgorithmSpec::dummyAlgorithm(), // real algorithm will be set in adjustTopology
     {}};
-  AnalysisSupportHelpers::addMissingOutputsToSpawner({}, ac.spawnerInputs, ac.requestedAODs, aodSpawner);
-
-  AnalysisSupportHelpers::addMissingOutputsToReader(ac.providedAODs, ac.requestedAODs, aodReader);
+  AnalysisSupportHelpers::addMissingOutputsToSpawner({}, dec.spawnerInputs, dec.requestedAODs, aodSpawner);
+  AnalysisSupportHelpers::addMissingOutputsToReader(dec.providedAODs, dec.requestedAODs, aodReader);
 
   std::sort(requestedCCDBs.begin(), requestedCCDBs.end(), inputSpecLessThan);
   std::sort(providedCCDBs.begin(), providedCCDBs.end(), outputSpecLessThan);
@@ -432,13 +415,11 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
     auto mctracks2aod = std::find_if(workflow.begin(), workflow.end(), [](auto const& x) { return x.name == "mctracks-to-aod"; });
     if (mctracks2aod == workflow.end()) {
       // add normal reader
-      auto&& algo = PluginManager::loadAlgorithmFromPlugin("O2FrameworkAnalysisSupport", "ROOTFileReader", ctx);
-      aodReader.algorithm = CommonDataProcessors::wrapWithTimesliceConsumption(algo);
       aodReader.outputs.emplace_back(OutputSpec{"TFN", "TFNumber"});
       aodReader.outputs.emplace_back(OutputSpec{"TFF", "TFFilename"});
     } else {
-      // AODs are being injected on-the-fly, add dummy reader
-      auto algo = AlgorithmSpec{
+      // AODs are being injected on-the-fly, add error-handler reader
+      aodReader.algorithm = AlgorithmSpec{
         adaptStateful(
           [outputs = aodReader.outputs](DeviceSpec const&) {
             LOGP(warn, "Workflow with injected AODs has unsatisfied inputs:");
@@ -449,7 +430,6 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
             // to ensure the output type for adaptStateful
             return adaptStateless([](DataAllocator&) {});
           })};
-      aodReader.algorithm = CommonDataProcessors::wrapWithTimesliceConsumption(algo);
     }
     auto concrete = DataSpecUtils::asConcreteDataMatcher(aodReader.inputs[0]);
     timer.outputs.emplace_back(concrete.origin, concrete.description, concrete.subSpec, Lifetime::Enumeration);
@@ -534,9 +514,6 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
 
   // add the Analysys CCDB backend which reads CCDB objects using a provided table
   if (analysisCCDBBackend.outputs.empty() == false) {
-    // add normal reader
-    auto&& algo = PluginManager::loadAlgorithmFromPlugin("O2FrameworkCCDBSupport", "AnalysisCCDBFetcherPlugin", ctx);
-    analysisCCDBBackend.algorithm = algo;
     extraSpecs.push_back(analysisCCDBBackend);
   }
 
@@ -547,7 +524,7 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
 
   // This is to inject a file sink so that any dangling ATSK object is written
   // to a ROOT file.
-  if (ac.providedOutputObjHist.empty() == false) {
+  if (dec.providedOutputObjHist.empty() == false) {
     auto rootSink = AnalysisSupportHelpers::getOutputObjHistSink(ctx);
     extraSpecs.push_back(rootSink);
   }
@@ -557,8 +534,8 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
 
   /// Analyze all ouputs
   auto [outputsInputsTmp, isDanglingTmp] = analyzeOutputs(workflow);
-  ac.isDangling = isDanglingTmp;
-  ac.outputsInputs = outputsInputsTmp;
+  dec.isDangling = isDanglingTmp;
+  dec.outputsInputs = outputsInputsTmp;
 
   // create DataOutputDescriptor
   std::shared_ptr<DataOutputDirector> dod = AnalysisSupportHelpers::getDataOutputDirector(ctx);
@@ -566,28 +543,28 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
   // select outputs of type AOD which need to be saved
   // ATTENTION: if there are dangling outputs the getGlobalAODSink
   // has to be created in any case!
-  for (auto ii = 0u; ii < ac.outputsInputs.size(); ii++) {
-    if (DataSpecUtils::partialMatch(ac.outputsInputs[ii], extendedAODOrigins)) {
-      auto ds = dod->getDataOutputDescriptors(ac.outputsInputs[ii]);
-      if (ds.size() > 0 || ac.isDangling[ii]) {
-        ac.outputsInputsAOD.emplace_back(ac.outputsInputs[ii]);
+  for (auto ii = 0u; ii < dec.outputsInputs.size(); ii++) {
+    if (DataSpecUtils::partialMatch(dec.outputsInputs[ii], extendedAODOrigins)) {
+      auto ds = dod->getDataOutputDescriptors(dec.outputsInputs[ii]);
+      if (ds.size() > 0 || dec.isDangling[ii]) {
+        dec.outputsInputsAOD.emplace_back(dec.outputsInputs[ii]);
       }
     }
   }
 
   // file sink for any AOD output
-  if (ac.outputsInputsAOD.size() > 0) {
+  if (dec.outputsInputsAOD.size() > 0) {
     // add TFNumber and TFFilename as input to the writer
-    ac.outputsInputsAOD.emplace_back(InputSpec{"tfn", "TFN", "TFNumber"});
-    ac.outputsInputsAOD.emplace_back(InputSpec{"tff", "TFF", "TFFilename"});
+    dec.outputsInputsAOD.emplace_back(InputSpec{"tfn", "TFN", "TFNumber"});
+    dec.outputsInputsAOD.emplace_back(InputSpec{"tff", "TFF", "TFFilename"});
     auto fileSink = AnalysisSupportHelpers::getGlobalAODSink(ctx);
     extraSpecs.push_back(fileSink);
 
-    auto it = std::find_if(ac.outputsInputs.begin(), ac.outputsInputs.end(), [](InputSpec& spec) -> bool {
+    auto it = std::find_if(dec.outputsInputs.begin(), dec.outputsInputs.end(), [](InputSpec& spec) -> bool {
       return DataSpecUtils::partialMatch(spec, o2::header::DataOrigin("TFN"));
     });
-    size_t ii = std::distance(ac.outputsInputs.begin(), it);
-    ac.isDangling[ii] = false;
+    size_t ii = std::distance(dec.outputsInputs.begin(), it);
+    dec.isDangling[ii] = false;
   }
 
   workflow.insert(workflow.end(), extraSpecs.begin(), extraSpecs.end());
@@ -595,20 +572,20 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
 
   // Select dangling outputs which are not of type AOD
   std::vector<InputSpec> redirectedOutputsInputs;
-  for (auto ii = 0u; ii < ac.outputsInputs.size(); ii++) {
+  for (auto ii = 0u; ii < dec.outputsInputs.size(); ii++) {
     if (ctx.options().get<std::string>("forwarding-policy") == "none") {
       continue;
     }
     // We forward to the output proxy all the inputs only if they are dangling
     // or if the forwarding policy is "proxy".
-    if (!ac.isDangling[ii] && (ctx.options().get<std::string>("forwarding-policy") != "all")) {
+    if (!dec.isDangling[ii] && (ctx.options().get<std::string>("forwarding-policy") != "all")) {
       continue;
     }
     // AODs are skipped in any case.
-    if (DataSpecUtils::partialMatch(ac.outputsInputs[ii], extendedAODOrigins)) {
+    if (DataSpecUtils::partialMatch(dec.outputsInputs[ii], extendedAODOrigins)) {
       continue;
     }
-    redirectedOutputsInputs.emplace_back(ac.outputsInputs[ii]);
+    redirectedOutputsInputs.emplace_back(dec.outputsInputs[ii]);
   }
 
   std::vector<InputSpec> unmatched;
@@ -638,6 +615,10 @@ void WorkflowHelpers::injectServiceDevices(WorkflowSpec& workflow, ConfigContext
       extraSpecs.push_back(CommonDataProcessors::getScheduledDummySink(ignored));
     } else {
       O2_SIGNPOST_EVENT_EMIT(workflow_helpers, sid, "injectServiceDevices", "Injecting rate limited dummy sink");
+      std::string rateLimitingChannelConfigOutput;
+      if (rateLimitingIPCID != -1) {
+        rateLimitingChannelConfigOutput = fmt::format("name=metric-feedback,type=push,method=bind,address=ipc://{}metric-feedback-{},transport=shmem,rateLogging=0", ChannelSpecHelpers::defaultIPCFolder(), rateLimitingIPCID);
+      }
       extraSpecs.push_back(CommonDataProcessors::getDummySink(ignored, rateLimitingChannelConfigOutput));
     }
   }

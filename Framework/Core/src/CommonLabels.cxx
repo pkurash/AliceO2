@@ -9,20 +9,11 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 
-#ifndef AliceO2_TPC_BETHEBLOCH_H_
-#define AliceO2_TPC_BETHEBLOCH_H_
+#include "Framework/CommonLabels.h"
 
-#include "MathUtils/BetheBlochAleph.h"
-
-namespace o2::tpc
+namespace o2::framework
 {
 
-template <typename T>
-GPUdi() T BetheBlochAleph(T bg, T kp1, T kp2, T kp3, T kp4, T kp5)
-{
-  return o2::common::BetheBlochAleph(bg, kp1, kp2, kp3, kp4, kp5);
-}
+const DataProcessorLabel suppressDomainInfoLabel = {"suppress-domain-info"};
 
-} // namespace o2::tpc
-
-#endif
+} // namespace o2::framework

@@ -9,14 +9,18 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 
-#include "ITSReconstruction/CookedConfigParam.h"
+#ifndef O2_FRAMEWORK_COMMONLABELS_H
+#define O2_FRAMEWORK_COMMONLABELS_H
 
-namespace o2
-{
-namespace its
-{
-static auto& sITSCookedTrackerParam = o2::its::CookedConfigParam::Instance();
+#include "Framework/DataProcessorLabel.h"
 
-O2ParamImpl(o2::its::CookedConfigParam);
-} // namespace its
-} // namespace o2
+namespace o2::framework
+{
+
+// Label to disable forwarding/advertising of DomainInfoHeader (oldest possible outputs)
+// When present on a DataProcessor, no DomainInfoHeader messages will be sent downstream.
+const extern DataProcessorLabel suppressDomainInfoLabel;
+
+} // namespace o2::framework
+
+#endif // O2_FRAMEWORK_COMMONLABELS_H

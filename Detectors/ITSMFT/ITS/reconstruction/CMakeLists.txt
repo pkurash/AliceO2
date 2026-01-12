@@ -10,10 +10,7 @@
 # or submit itself to any jurisdiction.
 
 o2_add_library(ITSReconstruction
-        SOURCES src/ClustererTask.cxx
-                src/CookedTracker.cxx
-                src/CookedConfigParam.cxx
-                src/RecoGeomHelper.cxx
+        SOURCES src/RecoGeomHelper.cxx
                 src/FastMultEstConfig.cxx
                 src/FastMultEst.cxx
         PUBLIC_LINK_LIBRARIES O2::ITSBase
@@ -23,10 +20,6 @@ o2_add_library(ITSReconstruction
 
 o2_target_root_dictionary(
   ITSReconstruction
-  HEADERS include/ITSReconstruction/ClustererTask.h
-          include/ITSReconstruction/CookedTracker.h
-          include/ITSReconstruction/CookedConfigParam.h
-          include/ITSReconstruction/RecoGeomHelper.h
+  HEADERS include/ITSReconstruction/RecoGeomHelper.h
           include/ITSReconstruction/FastMultEst.h
-          include/ITSReconstruction/FastMultEstConfig.h
-  LINKDEF src/CookedTrackerLinkDef.h)
+          include/ITSReconstruction/FastMultEstConfig.h)
