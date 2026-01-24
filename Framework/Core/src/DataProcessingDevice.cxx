@@ -617,6 +617,23 @@ static auto forwardInputs = [](ServiceRegistryRef registry, TimesliceSlot slot, 
   O2_SIGNPOST_END(forwarding, sid, "forwardInputs", "Forwarding done");
 };
 
+static auto cleanEarlyForward = [](ServiceRegistryRef registry, TimesliceSlot slot, std::vector<MessageSet>& currentSetOfInputs,
+                                   TimesliceIndex::OldestOutputInfo oldestTimeslice, bool copy, bool consume = true) {
+  auto& proxy = registry.get<FairMQDeviceProxy>();
+
+  O2_SIGNPOST_ID_GENERATE(sid, forwarding);
+  O2_SIGNPOST_START(forwarding, sid, "forwardInputs", "Cleaning up slot %zu with oldestTimeslice %zu %{public}s%{public}s%{public}s",
+                    slot.index, oldestTimeslice.timeslice.value, copy ? "with copy" : "", copy && consume ? " and " : "", consume ? "with consume" : "");
+  // Always copy them, because we do not want to actually send them.
+  // We merely need the side effect of the consume, if applicable.
+  for (size_t ii = 0, ie = currentSetOfInputs.size(); ii < ie; ++ii) {
+    auto span = std::span<fair::mq::MessagePtr>(currentSetOfInputs[ii].messages);
+    DataProcessingHelpers::cleanForwardedMessages(span, consume);
+  }
+
+  O2_SIGNPOST_END(forwarding, sid, "forwardInputs", "Cleaning done");
+};
+
 extern volatile int region_read_global_dummy_variable;
 volatile int region_read_global_dummy_variable;
 
@@ -1036,10 +1053,40 @@ void DataProcessingDevice::fillContext(DataProcessorContext& context, DeviceCont
     };
   }
 
-  auto decideEarlyForward = [&context, &deviceContext, &spec, this]() -> bool {
+  auto decideEarlyForward = [&context, &deviceContext, &spec, this]() -> ForwardPolicy {
+    ForwardPolicy defaultEarlyForwardPolicy = getenv("DPL_OLD_EARLY_FORWARD") ? ForwardPolicy::AtCompletionPolicySatisified : ForwardPolicy::AtInjection;
+    //  FIXME: try again with the new policy by default.
+    //
+    //  Make the new policy optional until we handle some of the corner cases
+    //  with custom policies which expect the early forward to happen only when
+    //  all the data is available, like in the TPC case.
+    //  ForwardPolicy defaultEarlyForwardPolicy = getenv("DPL_NEW_EARLY_FORWARD") ? ForwardPolicy::AtInjection : ForwardPolicy::AtCompletionPolicySatisified;
+    for (auto& forward : spec.forwards) {
+      if (DataSpecUtils::match(forward.matcher, ConcreteDataTypeMatcher{"TPC", "DIGITSMCTR"}) ||
+          DataSpecUtils::match(forward.matcher, ConcreteDataTypeMatcher{"TPC", "CLNATIVEMCLBL"}) ||
+          DataSpecUtils::match(forward.matcher, ConcreteDataTypeMatcher{o2::header::gDataOriginTPC, "DIGITS"}) ||
+          DataSpecUtils::match(forward.matcher, ConcreteDataTypeMatcher{o2::header::gDataOriginTPC, "CLUSTERNATIVE"})) {
+        defaultEarlyForwardPolicy = ForwardPolicy::AtCompletionPolicySatisified;
+        break;
+      }
+    }
+
     /// We must make sure there is no optional
     /// if we want to optimize the forwarding
-    bool canForwardEarly = (spec.forwards.empty() == false) && deviceContext.processingPolicies.earlyForward != EarlyForwardPolicy::NEVER;
+    ForwardPolicy forwardPolicy = defaultEarlyForwardPolicy;
+    if (spec.forwards.empty() == false) {
+      switch (deviceContext.processingPolicies.earlyForward) {
+        case o2::framework::EarlyForwardPolicy::NEVER:
+          forwardPolicy = ForwardPolicy::AfterProcessing;
+          break;
+        case o2::framework::EarlyForwardPolicy::ALWAYS:
+          forwardPolicy = defaultEarlyForwardPolicy;
+          break;
+        case o2::framework::EarlyForwardPolicy::NORAW:
+          forwardPolicy = defaultEarlyForwardPolicy;
+          break;
+      }
+    }
     bool onlyConditions = true;
     bool overriddenEarlyForward = false;
     for (auto& forwarded : spec.forwards) {
@@ -1047,25 +1094,25 @@ void DataProcessingDevice::fillContext(DataProcessorContext& context, DeviceCont
         onlyConditions = false;
       }
       if (DataSpecUtils::partialMatch(forwarded.matcher, o2::header::DataDescription{"RAWDATA"}) && deviceContext.processingPolicies.earlyForward == EarlyForwardPolicy::NORAW) {
-        context.canForwardEarly = false;
+        forwardPolicy = ForwardPolicy::AfterProcessing;
         overriddenEarlyForward = true;
         LOG(detail) << "Cannot forward early because of RAWDATA input: " << DataSpecUtils::describe(forwarded.matcher);
         break;
       }
       if (forwarded.matcher.lifetime == Lifetime::Optional) {
-        context.canForwardEarly = false;
+        forwardPolicy = ForwardPolicy::AfterProcessing;
         overriddenEarlyForward = true;
         LOG(detail) << "Cannot forward early because of Optional input: " << DataSpecUtils::describe(forwarded.matcher);
         break;
       }
     }
     if (!overriddenEarlyForward && onlyConditions) {
-      context.canForwardEarly = true;
+      forwardPolicy = defaultEarlyForwardPolicy;
       LOG(detail) << "Enabling early forwarding because only conditions to be forwarded";
     }
-    return canForwardEarly;
+    return forwardPolicy;
   };
-  context.canForwardEarly = decideEarlyForward();
+  context.forwardPolicy = decideEarlyForward();
 }
 
 void DataProcessingDevice::PreRun()
@@ -1680,6 +1727,51 @@ struct WaitBackpressurePolicy {
   }
 };
 
+auto forwardOnInsertion(ServiceRegistryRef& ref, std::span<fair::mq::MessagePtr>& messages) -> void
+{
+  O2_SIGNPOST_ID_GENERATE(sid, forwarding);
+
+  auto& spec = ref.get<DeviceSpec const>();
+  auto& context = ref.get<DataProcessorContext>();
+  if (context.forwardPolicy == ForwardPolicy::AfterProcessing || spec.forwards.empty()) {
+    O2_SIGNPOST_EVENT_EMIT(device, sid, "device", "Early forwardinding not enabled / needed.");
+    return;
+  }
+
+  O2_SIGNPOST_EVENT_EMIT(device, sid, "device", "Early forwardinding before injecting data into relayer.");
+  auto& timesliceIndex = ref.get<TimesliceIndex>();
+  auto oldestTimeslice = timesliceIndex.getOldestPossibleOutput();
+
+  auto& proxy = ref.get<FairMQDeviceProxy>();
+
+  O2_SIGNPOST_START(forwarding, sid, "forwardInputs",
+                    "Starting forwarding for incoming messages with oldestTimeslice %zu with copy",
+                    oldestTimeslice.timeslice.value);
+  std::vector<fair::mq::Parts> forwardedParts(proxy.getNumForwardChannels());
+  DataProcessingHelpers::routeForwardedMessages(proxy, messages, forwardedParts, true, false);
+
+  for (int fi = 0; fi < proxy.getNumForwardChannels(); fi++) {
+    if (forwardedParts[fi].Size() == 0) {
+      continue;
+    }
+    ForwardChannelInfo info = proxy.getForwardChannelInfo(ChannelIndex{fi});
+    auto& parts = forwardedParts[fi];
+    if (info.policy == nullptr) {
+      O2_SIGNPOST_EVENT_EMIT_ERROR(forwarding, sid, "forwardInputs", "Forwarding to %{public}s %d has no policy.", info.name.c_str(), fi);
+      continue;
+    }
+    O2_SIGNPOST_EVENT_EMIT(forwarding, sid, "forwardInputs", "Forwarding to %{public}s %d", info.name.c_str(), fi);
+    info.policy->forward(parts, ChannelIndex{fi}, ref);
+  }
+  auto& asyncQueue = ref.get<AsyncQueue>();
+  auto& decongestion = ref.get<DecongestionService>();
+  O2_SIGNPOST_ID_GENERATE(aid, async_queue);
+  O2_SIGNPOST_EVENT_EMIT(async_queue, aid, "forwardInputs", "Queuing forwarding oldestPossible %zu", oldestTimeslice.timeslice.value);
+  AsyncQueueHelpers::post(asyncQueue, AsyncTask{.timeslice = oldestTimeslice.timeslice, .id = decongestion.oldestPossibleTimesliceTask, .debounce = -1, .callback = decongestionCallbackLate}
+                                        .user<DecongestionContext>({.ref = ref, .oldestTimeslice = oldestTimeslice}));
+  O2_SIGNPOST_END(forwarding, sid, "forwardInputs", "Forwarding done");
+};
+
 /// This is the inner loop of our framework. The actual implementation
 /// is divided in two parts. In the first one we define a set of lambdas
 /// which describe what is actually going to happen, hiding all the state
@@ -1799,7 +1891,7 @@ void DataProcessingDevice::handleData(ServiceRegistryRef ref, InputChannelInfo& 
     stats.updateStats({(int)ProcessingStatsId::ERROR_COUNT, DataProcessingStats::Op::Add, 1});
   };
 
-  auto handleValidMessages = [&info, ref, &reportError](std::vector<InputInfo> const& inputInfos) {
+  auto handleValidMessages = [&info, ref, &reportError, &context](std::vector<InputInfo> const& inputInfos) {
     auto& relayer = ref.get<DataRelayer>();
     auto& state = ref.get<DeviceState>();
     static WaitBackpressurePolicy policy;
@@ -1854,11 +1946,13 @@ void DataProcessingDevice::handleData(ServiceRegistryRef ref, InputChannelInfo& 
             VariableContextHelpers::getTimeslice(variables);
             forwardInputs(ref, slot, dropped, oldestOutputInfo, false, true);
           };
+
           auto relayed = relayer.relay(parts.At(headerIndex)->GetData(),
                                        &parts.At(headerIndex),
                                        input,
                                        nMessages,
                                        nPayloadsPerHeader,
+                                       context.forwardPolicy == ForwardPolicy::AtInjection ? forwardOnInsertion : nullptr,
                                        onDrop);
           switch (relayed.type) {
             case DataRelayer::RelayChoice::Type::Backpressured:
@@ -2272,11 +2366,23 @@ bool DataProcessingDevice::tryDispatchComputation(ServiceRegistryRef ref, std::v
     bool hasForwards = spec.forwards.empty() == false;
     bool consumeSomething = action.op == CompletionPolicy::CompletionOp::Consume || action.op == CompletionPolicy::CompletionOp::ConsumeExisting;
 
-    if (context.canForwardEarly && hasForwards && consumeSomething) {
-      O2_SIGNPOST_EVENT_EMIT(device, aid, "device", "Early forwainding: %{public}s.", fmt::format("{}", action.op).c_str());
+    if (context.forwardPolicy == ForwardPolicy::AtCompletionPolicySatisified && hasForwards && consumeSomething) {
+      O2_SIGNPOST_EVENT_EMIT(device, aid, "device", "Early forwarding: %{public}s.", fmt::format("{}", action.op).c_str());
       auto& timesliceIndex = ref.get<TimesliceIndex>();
       forwardInputs(ref, action.slot, currentSetOfInputs, timesliceIndex.getOldestPossibleOutput(), true, action.op == CompletionPolicy::CompletionOp::Consume);
+    } else if (context.forwardPolicy == ForwardPolicy::AtInjection && hasForwards && consumeSomething) {
+      // We used to do fowarding here, however we now do it much earlier.
+      // We still need to clean the inputs which were already consumed
+      // via ConsumeExisting and which still have an header to hold the slot.
+      // FIXME: do we? This should really happen when we do the forwarding on
+      // insertion, because otherwise we lose the relevant information on how to
+      // navigate the set of headers. We could actually rely on the messageset index,
+      // is that the right thing to do though?
+      O2_SIGNPOST_EVENT_EMIT(device, aid, "device", "cleaning early forwarding: %{public}s.", fmt::format("{}", action.op).c_str());
+      auto& timesliceIndex = ref.get<TimesliceIndex>();
+      cleanEarlyForward(ref, action.slot, currentSetOfInputs, timesliceIndex.getOldestPossibleOutput(), true, action.op == CompletionPolicy::CompletionOp::Consume);
     }
+
     markInputsAsDone(action.slot);
 
     uint64_t tStart = uv_hrtime();
@@ -2395,7 +2501,7 @@ bool DataProcessingDevice::tryDispatchComputation(ServiceRegistryRef ref, std::v
       context.postDispatchingCallbacks(processContext);
       ref.get<CallbackService>().call<CallbackService::Id::DataConsumed>(o2::framework::ServiceRegistryRef{ref});
     }
-    if ((context.canForwardEarly == false) && hasForwards && consumeSomething) {
+    if ((context.forwardPolicy == ForwardPolicy::AfterProcessing) && hasForwards && consumeSomething) {
       O2_SIGNPOST_EVENT_EMIT(device, aid, "device", "Late forwarding");
       auto& timesliceIndex = ref.get<TimesliceIndex>();
       forwardInputs(ref, action.slot, currentSetOfInputs, timesliceIndex.getOldestPossibleOutput(), false, action.op == CompletionPolicy::CompletionOp::Consume);

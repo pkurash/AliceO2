@@ -436,7 +436,8 @@ DataRelayer::RelayChoice
                      InputInfo const& info,
                      size_t nMessages,
                      size_t nPayloads,
-                     std::function<void(TimesliceSlot, std::vector<MessageSet>&, TimesliceIndex::OldestOutputInfo)> onDrop)
+                     OnInsertionCallback onInsertion,
+                     OnDropCallback onDrop)
 {
   std::scoped_lock<O2_LOCKABLE(std::recursive_mutex)> lock(mMutex);
   DataProcessingHeader const* dph = o2::header::get<DataProcessingHeader*>(rawHeader);
@@ -482,6 +483,7 @@ DataRelayer::RelayChoice
                      &messages,
                      &nMessages,
                      &nPayloads,
+                     &onInsertion,
                      &cache = mCache,
                      &services = mContext,
                      numInputTypes = mDistinctRoutesIndex.size()](TimesliceId timeslice, int input, TimesliceSlot slot, InputInfo const& info) -> size_t {
@@ -497,6 +499,12 @@ DataRelayer::RelayChoice
     // DataRelayer::relay
     assert(nPayloads > 0);
     size_t saved = 0;
+    // It's guaranteed we will see all these messages only once, so we can
+    // do the forwarding here.
+    auto allMessages = std::span<fair::mq::MessagePtr>(messages, messages + nMessages);
+    if (onInsertion) {
+      onInsertion(services, allMessages);
+    }
     for (size_t mi = 0; mi < nMessages; ++mi) {
       assert(mi + nPayloads < nMessages);
       // We are in calibration mode and the data does not have the calibration bit set.
@@ -512,7 +520,10 @@ DataRelayer::RelayChoice
         mi += nPayloads;
         continue;
       }
-      target.add([&messages, &mi](size_t i) -> fair::mq::MessagePtr& { return messages[mi + i]; }, nPayloads + 1);
+      auto span = std::span<fair::mq::MessagePtr>(messages + mi, messages + mi + nPayloads + 1);
+      // Notice this will split [(header, payload), (header, payload)] multiparts
+      // in N different subParts for the message spec.
+      target.add([&span](size_t i) -> fair::mq::MessagePtr& { return span[i]; }, nPayloads + 1);
       mi += nPayloads;
       saved += nPayloads;
     }
