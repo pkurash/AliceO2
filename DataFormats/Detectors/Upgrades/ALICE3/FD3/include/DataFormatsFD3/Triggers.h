@@ -34,7 +34,8 @@ class Triggers
     return ((1ull << std::forward<TrgBits>(trgBits)) | ...);
   }
 
-  enum { bitA = 0,
+  enum { 
+	 bitA = 0,
          bitC = 1,                           // alias of bitAOut (FT0/FDD)
          bitAOut = 1,                        // alias of bitC (FV0)
          bitSCen = 2,                        // alias of bitTrgNchan (FT0/FDD)
@@ -46,7 +47,9 @@ class Triggers
          bitLaser = 5,                       // indicates the laser was triggered in this BC
          bitOutputsAreBlocked = 6,           // indicates that laser-induced pulses should arrive from detector to FEE in this BC (and trigger outputs are blocked)
          bitDataIsValid = 7,                 // data is valid for processing
-         bitMinBias = 8 };                   // extra calculated bit, vrt & (cern || semicent)
+         bitMinBias = 8                      // extra calculated bit, vrt & (cern || semicent)
+
+       };                    
   static const int16_t DEFAULT_TIME = -5000; // for average of one side (A or C)
   static const int16_t DEFAULT_AMP = 0;
   static const int16_t DEFAULT_ZERO = 0;

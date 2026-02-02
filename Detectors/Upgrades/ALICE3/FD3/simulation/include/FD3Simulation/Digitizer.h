@@ -16,6 +16,7 @@
 #include "DataFormatsFD3/Digit.h"
 #include "DataFormatsFD3/ChannelData.h"
 #include "DataFormatsFD3/MCLabel.h"
+#include "DataFormatsFD3/Triggers.h"
 #include "FD3Simulation/Detector.h"
 #include "FD3Base/Constants.h"
 #include "SimulationDataFormat/MCTruthContainer.h"

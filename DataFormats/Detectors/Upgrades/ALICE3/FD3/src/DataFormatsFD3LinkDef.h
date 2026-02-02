@@ -15,6 +15,9 @@
 #pragma link off all classes;
 #pragma link off all functions;
 
+#pragma link C++ class o2::fd3::Triggers + ;
+#pragma link C++ class vector < o2::fd3::Triggers> + ;
+
 #pragma link C++ class o2::fd3::Hit + ;
 #pragma link C++ class vector < o2::fd3::Hit> + ;
 #pragma link C++ class o2::fd3::MCLabel + ;
