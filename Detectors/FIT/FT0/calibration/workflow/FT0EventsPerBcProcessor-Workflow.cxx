@@ -39,7 +39,8 @@ o2::framework::WorkflowSpec defineDataProcessing(o2::framework::ConfigContext co
       {"one-object-per-run", VariantType::Bool, false, {"If set, workflow creates only one calibration object per run"}},
       {"min-entries-number", VariantType::UInt32, 5000u, {"Minimum number of entries required for a slot to be valid"}},
       {"min-ampl-side-a", VariantType::Int, 0, {"Amplitude threshold for Side A events"}},
-      {"min-ampl-side-c", VariantType::Int, 0, {"Amplitude threshold for Side C events"}}}};
+      {"min-ampl-side-c", VariantType::Int, 0, {"Amplitude threshold for Side C events"}},
+      {"min-sum-of-ampl", VariantType::Int, 0, {"Amplitude threshold for sum of A-side and C-side amplitudes"}}}};
 
   WorkflowSpec workflow;
   workflow.emplace_back(dataProcessorSpec);

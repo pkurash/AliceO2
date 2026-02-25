@@ -25,6 +25,9 @@ struct IOTOFBaseParam : public o2::conf::ConfigurableParamHelper<IOTOFBaseParam>
   bool enableOuterTOF = true;
   bool enableForwardTOF = true;
   bool enableBackwardTOF = true;
+  std::string detectorPattern = "";
+  bool segmentedInnerTOF = false; // If the inner TOF layer is segmented
+  bool segmentedOuterTOF = false; // If the outer TOF layer is segmented
 
   O2ParamDef(IOTOFBaseParam, "IOTOFBase");
 };

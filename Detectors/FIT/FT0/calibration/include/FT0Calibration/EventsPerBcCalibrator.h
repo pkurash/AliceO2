@@ -31,7 +31,7 @@
 namespace o2::ft0
 {
 struct EventsPerBcContainer {
-  EventsPerBcContainer(int32_t minAmplitudeSideA, int32_t minAmplitudeSideC) : mMinAmplitudeSideA(minAmplitudeSideA), mMinAmplitudeSideC(minAmplitudeSideC) {}
+  EventsPerBcContainer(int32_t minAmplitudeSideA, int32_t minAmplitudeSideC, int32_t minSumOfAmplitude) : mMinAmplitudeSideA(minAmplitudeSideA), mMinAmplitudeSideC(minAmplitudeSideC), mMinSumOfAmplitude(minSumOfAmplitude) {}
 
   size_t getEntries() const { return entries; }
   void print() const;
@@ -40,6 +40,7 @@ struct EventsPerBcContainer {
 
   const int32_t mMinAmplitudeSideA;
   const int32_t mMinAmplitudeSideC;
+  const int32_t mMinSumOfAmplitude;
 
   std::array<double, o2::constants::lhc::LHCMaxBunches> mTvx{0.0};
   size_t entries{0};
@@ -56,7 +57,7 @@ class EventsPerBcCalibrator final : public o2::calibration::TimeSlotCalibration<
   using EventsHistogram = std::array<double, o2::constants::lhc::LHCMaxBunches>;
 
  public:
-  EventsPerBcCalibrator(uint32_t minNumberOfEntries, int32_t minAmplitudeSideA, int32_t minAmplitudeSideC);
+  EventsPerBcCalibrator(uint32_t minNumberOfEntries, int32_t minAmplitudeSideA, int32_t minAmplitudeSideC, int32_t minSumOfAmplitude);
 
   bool hasEnoughData(const Slot& slot) const override;
   void initOutput() override;
@@ -70,6 +71,7 @@ class EventsPerBcCalibrator final : public o2::calibration::TimeSlotCalibration<
   const uint32_t mMinNumberOfEntries;
   const int32_t mMinAmplitudeSideA;
   const int32_t mMinAmplitudeSideC;
+  const int32_t mMinSumOfAmplitude;
 
   std::vector<EventsPerBc> mTvxPerBcs;
   std::vector<std::unique_ptr<o2::ccdb::CcdbObjectInfo>> mTvxPerBcInfos;

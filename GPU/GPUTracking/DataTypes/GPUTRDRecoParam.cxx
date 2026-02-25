@@ -28,64 +28,33 @@ void GPUTRDRecoParam::init(float bz, const GPUSettingsRec* rec)
   if (CAMath::Abs(CAMath::Abs(bz) - 2) < 0.1) {
     if (bz > 0) {
       // magnetic field +0.2 T
-      mRPhiA2 = resRPhiIdeal2;
-      mRPhiB = -1.43e-2f;
       mRPhiC2 = 4.55e-2f;
-
-      mDyA2 = 1.225e-3f;
-      mDyB = -9.8e-3f;
-      mDyC2 = 3.88e-2f;
-
-      mAngleToDyA = -0.1f;
-      mAngleToDyB = 1.89f;
-      mAngleToDyC = -0.4f;
     } else {
       // magnetic field -0.2 T
-      mRPhiA2 = resRPhiIdeal2;
-      mRPhiB = 1.43e-2f;
       mRPhiC2 = 4.55e-2f;
-
-      mDyA2 = 1.225e-3f;
-      mDyB = 9.8e-3f;
-      mDyC2 = 3.88e-2f;
-
-      mAngleToDyA = 0.1f;
-      mAngleToDyB = 1.89f;
-      mAngleToDyC = 0.4f;
     }
   } else if (CAMath::Abs(CAMath::Abs(bz) - 5) < 0.1) {
     if (bz > 0) {
       // magnetic field +0.5 T
-      mRPhiA2 = resRPhiIdeal2;
-      mRPhiB = 0.125f;
       mRPhiC2 = 0.0961f;
-
-      mDyA2 = 1.681e-3f;
-      mDyB = 0.15f;
-      mDyC2 = 0.1849f;
-
-      mAngleToDyA = 0.13f;
-      mAngleToDyB = 2.43f;
-      mAngleToDyC = -0.58f;
     } else {
       // magnetic field -0.5 T
-      mRPhiA2 = resRPhiIdeal2;
-      mRPhiB = -0.14f;
       mRPhiC2 = 0.1156f;
-
-      mDyA2 = 2.209e-3f;
-      mDyB = -0.15f;
-      mDyC2 = 0.2025f;
-
-      mAngleToDyA = -0.15f;
-      mAngleToDyB = 2.34f;
-      mAngleToDyC = 0.56f;
     }
   } else {
     LOGP(warning, "No error parameterization available for Bz= {}. Keeping default value (sigma_y = const. = 1cm)", bz);
   }
-  LOGP(info, "Loaded parameterizations for Bz={}: PhiRes:[{},{},{}] DyRes:[{},{},{}] Angle2Dy:[{},{},{}]",
-       bz, mRPhiA2, mRPhiB, mRPhiC2, mDyA2, mDyB, mDyC2, mAngleToDyA, mAngleToDyB, mAngleToDyC);
+
+  mRPhiA2 = resRPhiIdeal2;
+  mLorentzAngle = -0.02f + 0.13f * bz / 5.f;
+
+  mDyA2 = 6e-3f;
+  mDyC2 = 0.3f;
+  mCorrYDyA = 0.27f;
+  mCorrYDyC = -0.44f;
+
+  LOGP(info, "Loaded parameterizations for Bz={}: PhiRes:[{},{},{}] DyRes:[{},{},{}] CorrYDy:[{},{},{}]",
+       bz, mRPhiA2, mLorentzAngle, mRPhiC2, mDyA2, mLorentzAngle, mDyC2, mCorrYDyA, mLorentzAngle, mCorrYDyC);
 }
 
 void GPUTRDRecoParam::recalcTrkltCov(const float tilt, const float snp, const float rowSize, float* cov) const

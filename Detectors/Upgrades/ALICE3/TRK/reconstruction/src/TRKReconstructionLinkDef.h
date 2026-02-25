@@ -9,20 +9,12 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 
-#ifndef O2_FDD_RAWWORKFLOW_H
-#define O2_FDD_RAWWORKFLOW_H
+#ifdef __CLING__
 
-/// @file   RawWorkflow.h
+#pragma link off all globals;
+#pragma link off all classes;
+#pragma link off all functions;
 
-#include "Framework/WorkflowSpec.h"
+#pragma link C++ class o2::trk::TimeFrame < 11> + ;
 
-namespace o2
-{
-namespace fdd
-{
-framework::WorkflowSpec getFDDRawWorkflow(bool useProcess,
-                                          bool dumpProcessor, bool dumpReader,
-                                          bool disableRootOut);
-} // namespace fdd
-} // namespace o2
 #endif

@@ -50,8 +50,11 @@ class FT0EventsPerBcProcessor final : public o2::framework::Task
     if (ic.options().hasOption("min-ampl-side-c")) {
       mMinAmplitudeSideC = ic.options().get<int32_t>("min-ampl-side-c");
     }
+    if (ic.options().hasOption("min-sum-of-ampl")) {
+      mMinSumOfAmplitude = ic.options().get<int32_t>("min-sum-of-ampl");
+    }
 
-    mCalibrator = std::make_unique<o2::ft0::EventsPerBcCalibrator>(mMinNumberOfEntries, mMinAmplitudeSideA, mMinAmplitudeSideC);
+    mCalibrator = std::make_unique<o2::ft0::EventsPerBcCalibrator>(mMinNumberOfEntries, mMinAmplitudeSideA, mMinAmplitudeSideC, mMinSumOfAmplitude);
 
     if (mOneObjectPerRun) {
       LOG(info) << "Only one object will be created at the end of run";
@@ -119,6 +122,7 @@ class FT0EventsPerBcProcessor final : public o2::framework::Task
   uint32_t mMinNumberOfEntries;
   int32_t mMinAmplitudeSideA;
   int32_t mMinAmplitudeSideC;
+  int32_t mMinSumOfAmplitude;
 };
 } // namespace o2::calibration
 #endif

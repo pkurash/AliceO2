@@ -1,4 +1,4 @@
-// Copyright 2019-2020 CERN and copyright holders of ALICE O2.
+// Copyright 2019-2026 CERN and copyright holders of ALICE O2.
 // See https://alice-o2.web.cern.ch/copyright for details of the copyright holders.
 // All rights not expressly granted are reserved.
 //
@@ -9,16 +9,17 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 
-/// @file   RawDataReaderSpec.cxx
 
-#include "FDDWorkflow/RawDataReaderSpec.h"
+#include "Framework/ServiceRegistryRef.h"
+namespace o2::framework {
 
-using namespace o2::framework;
+ServiceRegistryRef *ServiceRegistryRef::globalDeviceRef(ServiceRegistryRef *ref) {
+  static ServiceRegistryRef *globalRef = nullptr;
+  if (!globalRef) {
+    globalRef = ref;
+  }
+  // We return a copy, so that it can be cache
+  return globalRef;
+}
 
-namespace o2
-{
-namespace fdd
-{
-
-} // namespace fdd
-} // namespace o2
+}

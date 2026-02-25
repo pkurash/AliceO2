@@ -23,7 +23,7 @@ void EventsPerBcContainer::fill(const o2::dataformats::TFIDInfo& ti, const gsl::
 {
   size_t oldEntries = entries;
   for (const auto& digit : data) {
-    if (digit.mTriggers.getVertex() && digit.mTriggers.getAmplA() >= mMinAmplitudeSideA && digit.mTriggers.getAmplC() >= mMinAmplitudeSideC) {
+    if (digit.mTriggers.getVertex() && digit.mTriggers.getAmplA() >= mMinAmplitudeSideA && digit.mTriggers.getAmplC() >= mMinAmplitudeSideC && (digit.mTriggers.getAmplA() + digit.mTriggers.getAmplC()) >= mMinSumOfAmplitude) {
       mTvx[digit.mIntRecord.bc]++;
       entries++;
     }
@@ -45,7 +45,7 @@ void EventsPerBcCalibrator::initOutput()
   mTvxPerBcInfos.clear();
 }
 
-EventsPerBcCalibrator::EventsPerBcCalibrator(uint32_t minNumberOfEntries, int32_t minAmplitudeSideA, int32_t minAmplitudeSideC) : mMinNumberOfEntries(minNumberOfEntries), mMinAmplitudeSideA(minAmplitudeSideA), mMinAmplitudeSideC(minAmplitudeSideC)
+EventsPerBcCalibrator::EventsPerBcCalibrator(uint32_t minNumberOfEntries, int32_t minAmplitudeSideA, int32_t minAmplitudeSideC, int32_t minSumOfAmplitude) : mMinNumberOfEntries(minNumberOfEntries), mMinAmplitudeSideA(minAmplitudeSideA), mMinAmplitudeSideC(minAmplitudeSideC), mMinSumOfAmplitude(minSumOfAmplitude)
 {
   LOG(info) << "Defined threshold for number of entires per slot: " << mMinNumberOfEntries;
   LOG(info) << "Defined threshold for side A amplitude for event: " << mMinAmplitudeSideA;
@@ -75,7 +75,7 @@ EventsPerBcCalibrator::Slot& EventsPerBcCalibrator::emplaceNewSlot(bool front, T
 {
   auto& cont = getSlots();
   auto& slot = front ? cont.emplace_front(tstart, tend) : cont.emplace_back(tstart, tend);
-  slot.setContainer(std::make_unique<EventsPerBcContainer>(mMinAmplitudeSideA, mMinAmplitudeSideC));
+  slot.setContainer(std::make_unique<EventsPerBcContainer>(mMinAmplitudeSideA, mMinAmplitudeSideC, mMinSumOfAmplitude));
   return slot;
 }
 } // namespace o2::ft0

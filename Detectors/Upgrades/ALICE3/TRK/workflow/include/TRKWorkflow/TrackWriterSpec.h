@@ -9,19 +9,23 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 
-#ifndef STEER_DIGITIZERWORKFLOW_HMPIDCLUSTERIZER_H_
-#define STEER_DIGITIZERWORKFLOW_HMPIDCLUSTERIZER_H_
+/// @file   TrackWriterSpec.h
+
+#ifndef O2_TRK_TRACKWRITER
+#define O2_TRK_TRACKWRITER
 
 #include "Framework/DataProcessorSpec.h"
 
 namespace o2
 {
-namespace hmpid
+namespace trk
 {
 
-o2::framework::DataProcessorSpec getHMPIDClusterizerSpec(bool useMC);
+/// create a processor spec
+/// write TRK tracks to ROOT file
+o2::framework::DataProcessorSpec getTrackWriterSpec(bool useMC);
 
-} // end namespace hmpid
-} // end namespace o2
+} // namespace trk
+} // namespace o2
 
-#endif /* STEER_DIGITIZERWORKFLOW_HMPIDCLUSTERIZERSPEC_H_ */
+#endif /* O2_TRK_TRACKWRITER */

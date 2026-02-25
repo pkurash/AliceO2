@@ -1248,6 +1248,7 @@ std::vector<std::regex> getDumpableMetrics()
   dumpableMetrics.emplace_back("^total-timeframes.*");
   dumpableMetrics.emplace_back("^device_state.*");
   dumpableMetrics.emplace_back("^total_wall_time_ms$");
+  dumpableMetrics.emplace_back("^ccdb-.*$");
   return dumpableMetrics;
 }
 
@@ -1429,6 +1430,7 @@ int runStateMachine(DataProcessorSpecs const& workflow,
   // We initialise this in the driver, because different drivers might have
   // different versions of the service
   ServiceRegistry serviceRegistry;
+  ServiceRegistryRef::globalDeviceRef(new ServiceRegistryRef{serviceRegistry, ServiceRegistry::globalDeviceSalt()});
 
   if ((driverConfig.batch == false || getenv("DPL_DRIVER_REMOTE_GUI") != nullptr) && frameworkId.empty()) {
     debugGUI = initDebugGUI();
