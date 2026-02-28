@@ -56,23 +56,18 @@ Detector::Detector(bool active)
     mGeometryTGeo(nullptr),
     mTrackData()
 {
-  mNumberOfRingsC = Constants::nringsC;
+  mNumberOfRings = Constants::nrings;
+  mNumberOfRings_extra = Constants::nrings_extra;
   mNumberOfSectors = Constants::nsect;
 
-  mEtaMinA = Constants::etaMin;
-  mEtaMaxA = Constants::etaMax;
-  mEtaMinC = -Constants::etaMax;
-  mEtaMaxC = -Constants::etaMin;
+  mEtaMin = Constants::etaMin;
+  mEtaMax = Constants::etaMax;
+  mEtaMin_extra = Constants::etaMax_extra;
+  mEtaMax_extra = Constants::etaMin_extra;
 
   auto& baseParam = FD3BaseParam::Instance();
 
-  if (baseParam.withMG) {
-    mNumberOfRingsA = Constants::nringsA_withMG;
-    mEtaMinA = Constants::etaMinA_withMG;
-  } else {
-    mNumberOfRingsA = Constants::nringsA;
-    mEtaMinA = Constants::etaMin;
-  }
+  mExtra = baseParam.modules_extra;
 
   mDzScint = baseParam.dzscint / 2;
   mDzPlate = baseParam.dzplate;
@@ -80,20 +75,21 @@ Detector::Detector(bool active)
   mPlateBehindA = baseParam.plateBehindA;
   mFullContainer = baseParam.fullContainer;
 
-  mZA = baseParam.zmodA;
-  mZC = baseParam.zmodC;
+  mZAC = baseParam.zmodAC;
+  mZAC_extra = baseParam.zmodAC_extra;
 
-  for (int i = 0; i <= mNumberOfRingsA + 1; i++) {
-    float eta = mEtaMaxA - i * (mEtaMaxA - mEtaMinA) / mNumberOfRingsA;
-    float r = ringSize(mZA, eta);
-    mRingSizesA.emplace_back(r);
+  for (int i = 0; i <= mNumberOfRings + 1; i++) {
+    float eta = mEtaMax - i * (mEtaMax - mEtaMin) / mNumberOfRings;
+    float r = ringSize(mZAC, eta);
+    mRingSizes.emplace_back(r);
   }
 
-  for (int i = 0; i <= mNumberOfRingsC + 1; i++) {
-    float eta = mEtaMinC + i * (mEtaMaxC - mEtaMinC) / mNumberOfRingsC;
-    float r = ringSize(mZC, eta);
-    mRingSizesC.emplace_back(r);
+  for (int i = 0; i <= mNumberOfRings_extra + 1; i++) {
+    float eta = mEtaMax - i * (mEtaMax_extra - mEtaMin_extra) / mNumberOfRings_extra;
+    float r = ringSize(mZAC_extra, eta);
+    mRingSizes_extra.emplace_back(r);
   }
+
 }
 
 Detector::Detector(const Detector& rhs)
@@ -202,12 +198,6 @@ o2::fd3::Hit* Detector::addHit(int trackId, unsigned int detId,
   return &(mHits->back());
 }
 
-void Detector::ConstructGeometry()
-{
-  createMaterials();
-  buildModules();
-}
-
 void Detector::EndOfEvent()
 {
   Reset();
@@ -229,6 +219,12 @@ void Detector::Reset()
   if (!o2::utils::ShmManager::Instance().isOperational()) {
     mHits->clear();
   }
+}
+
+void Detector::ConstructGeometry()
+{
+  createMaterials();
+  buildModules();
 }
 
 void Detector::createMaterials()
@@ -285,8 +281,16 @@ void Detector::buildModules()
   TGeoVolumeAssembly* vFD3A = buildModuleA();
   TGeoVolumeAssembly* vFD3C = buildModuleC();
 
-  vCave->AddNode(vFD3A, 1, new TGeoTranslation(0., 0., mZA));
-  vCave->AddNode(vFD3C, 2, new TGeoTranslation(0., 0., mZC));
+  vCave->AddNode(vFD3A, 1, new TGeoTranslation(0., 0., mZAC));
+  vCave->AddNode(vFD3C, 2, new TGeoTranslation(0., 0., -mZAC));
+
+  if (mExtra) {
+    TGeoVolumeAssembly* vFD3A_extra = buildModuleA_extra();
+    TGeoVolumeAssembly* vFD3C_extra = buildModuleC_extra();
+    vCave->AddNode(vFD3A_extra, 1, new TGeoTranslation(0., 0., mZAC_extra));
+    vCave->AddNode(vFD3C_extra, 2, new TGeoTranslation(0., 0., -mZAC_extra));
+  
+  }
 }
 
 TGeoVolumeAssembly* Detector::buildModuleA()
@@ -297,11 +301,11 @@ TGeoVolumeAssembly* Detector::buildModuleA()
 
   float dphiDeg = 360. / mNumberOfSectors;
 
-  for (int ir = 0; ir < mNumberOfRingsA; ir++) {
+  for (int ir = 0; ir < mNumberOfRings; ir++) {
     std::string rName = "fd3_ring" + std::to_string(ir + 1);
     TGeoVolumeAssembly* ring = new TGeoVolumeAssembly(rName.c_str());
-    float rmin = mRingSizesA[ir];
-    float rmax = mRingSizesA[ir + 1];
+    float rmin = mRingSizes[ir];
+    float rmax = mRingSizes[ir + 1];
     LOG(info) << "ring" << ir << ": from " << rmin << " to " << rmax;
     for (int ic = 0; ic < mNumberOfSectors; ic++) {
       int cellId = ic + mNumberOfSectors * ir;
@@ -324,7 +328,7 @@ TGeoVolumeAssembly* Detector::buildModuleA()
   if (mPlateBehindA || mFullContainer) {
     LOG(info) << "adding container on A side";
     auto pmed = (TGeoMedium*)gGeoManager->GetMedium("FD3_Aluminium");
-    auto pvol = new TGeoTube("pvol_fd3a", mRingSizesA[0], mRingSizesA[mNumberOfRingsA], mDzPlate);
+    auto pvol = new TGeoTube("pvol_fd3a", mRingSizes[0], mRingSizes[mNumberOfRings], mDzPlate);
     auto pnod1 = new TGeoVolume("pnod1_FD3A", pvol, pmed);
     double dpz = 2. + mDzPlate / 2;
     mod->AddNode(pnod1, 1, new TGeoTranslation(0, 0, dpz));
@@ -345,14 +349,14 @@ TGeoVolumeAssembly* Detector::buildModuleC()
 
   float dphiDeg = 360. / mNumberOfSectors;
 
-  for (int ir = 0; ir < mNumberOfRingsC; ir++) {
-    std::string rName = "fd3_ring" + std::to_string(ir + 1 + mNumberOfRingsA);
+  for (int ir = 0; ir < mNumberOfRings; ir++) {
+    std::string rName = "fd3_ring" + std::to_string(ir + 1 + mNumberOfRings);
     TGeoVolumeAssembly* ring = new TGeoVolumeAssembly(rName.c_str());
-    float rmin = mRingSizesC[ir];
-    float rmax = mRingSizesC[ir + 1];
-    LOG(info) << "ring" << ir + mNumberOfRingsA << ": from " << rmin << " to " << rmax;
+    float rmin = mRingSizes[ir];
+    float rmax = mRingSizes[ir + 1];
+    LOG(info) << "ring" << ir + mNumberOfRings << ": from " << rmin << " to " << rmax;
     for (int ic = 0; ic < mNumberOfSectors; ic++) {
-      int cellId = ic + mNumberOfSectors * (ir + mNumberOfRingsA);
+      int cellId = ic + mNumberOfSectors * (ir + mNumberOfRings);
       std::string nodeName = "fd3_node" + std::to_string(cellId);
       float phimin = dphiDeg * ic;
       float phimax = dphiDeg * (ic + 1);
@@ -372,7 +376,7 @@ TGeoVolumeAssembly* Detector::buildModuleC()
   if (mFullContainer) {
     LOG(info) << "adding container on C side";
     auto pmed = (TGeoMedium*)gGeoManager->GetMedium("FD3_Aluminium");
-    auto pvol = new TGeoTube("pvol_fd3c", mRingSizesC[0], mRingSizesC[mNumberOfRingsC], mDzPlate);
+    auto pvol = new TGeoTube("pvol_fd3c", mRingSizes[0], mRingSizes[mNumberOfRings], mDzPlate);
     auto pnod1 = new TGeoVolume("pnod1_FD3C", pvol, pmed);
     auto pnod2 = new TGeoVolume("pnod2_FD3C", pvol, pmed);
     double dpz = mDzScint / 2 + mDzPlate / 2;
@@ -384,25 +388,92 @@ TGeoVolumeAssembly* Detector::buildModuleC()
   return mod;
 }
 
+TGeoVolumeAssembly* Detector::buildModuleA_extra()
+{
+  TGeoVolumeAssembly* mod = new TGeoVolumeAssembly("FD3A_extra");
+
+  const TGeoMedium* medium = gGeoManager->GetMedium("FD3_Scintillator");
+
+  float dphiDeg = 360. / mNumberOfSectors;
+
+  for (int ir = 0; ir < mNumberOfRings_extra; ir++) {
+    std::string rName = "fd3_ring" + std::to_string(ir + 1 + 2 * mNumberOfRings);
+    TGeoVolumeAssembly* ring = new TGeoVolumeAssembly(rName.c_str());
+    float rmin = mRingSizes_extra[ir];
+    float rmax = mRingSizes_extra[ir + 1];
+    LOG(info) << "ring" << ir << ": from " << rmin << " to " << rmax;
+    for (int ic = 0; ic < mNumberOfSectors; ic++) {
+      int cellId = ic + mNumberOfSectors * (ir + 2 * mNumberOfRings);
+      std::string nodeName = "fd3_node" + std::to_string(cellId);
+      float phimin = dphiDeg * ic;
+      float phimax = dphiDeg * (ic + 1);
+      auto tbs = new TGeoTubeSeg("tbs", rmin, rmax, mDzScint, phimin, phimax);
+      auto nod = new TGeoVolume(nodeName.c_str(), tbs, medium);
+      if ((ir + ic) % 2 == 0) {
+        nod->SetLineColor(kRed);
+      } else {
+        nod->SetLineColor(kRed - 7);
+      }
+      ring->AddNode(nod, cellId);
+    }
+    mod->AddNode(ring, ir + 1);
+  }
+
+  return mod;
+}
+
+TGeoVolumeAssembly* Detector::buildModuleC_extra()
+{
+  TGeoVolumeAssembly* mod = new TGeoVolumeAssembly("FD3C_extra");
+
+  const TGeoMedium* medium = gGeoManager->GetMedium("FD3_Scintillator");
+
+  float dphiDeg = 360. / mNumberOfSectors;
+
+  for (int ir = 0; ir < mNumberOfRings_extra; ir++) {
+    std::string rName = "fd3_ring" + std::to_string(ir + 1 + 2 * mNumberOfRings + mNumberOfRings_extra);
+    TGeoVolumeAssembly* ring = new TGeoVolumeAssembly(rName.c_str());
+    float rmin = mRingSizes_extra[ir];
+    float rmax = mRingSizes_extra[ir + 1];
+    LOG(info) << "ring" << ir + mNumberOfRings_extra << ": from " << rmin << " to " << rmax;
+    for (int ic = 0; ic < mNumberOfSectors; ic++) {
+      int cellId = ic + mNumberOfSectors * (ir + 2* mNumberOfRings + mNumberOfRings_extra);
+      std::string nodeName = "fd3_node" + std::to_string(cellId);
+      float phimin = dphiDeg * ic;
+      float phimax = dphiDeg * (ic + 1);
+      auto tbs = new TGeoTubeSeg("tbs", rmin, rmax, mDzScint, phimin, phimax);
+      auto nod = new TGeoVolume(nodeName.c_str(), tbs, medium);
+      if ((ir + ic) % 2 == 0) {
+        nod->SetLineColor(kBlue);
+      } else {
+        nod->SetLineColor(kBlue - 7);
+      }
+      ring->AddNode(nod, cellId);
+    }
+    mod->AddNode(ring, ir + 1);
+  }
+
+  return mod;
+}
+
 void Detector::defineSensitiveVolumes()
 {
   LOG(info) << "Adding FD3 Sentitive Volumes";
 
   TGeoVolume* v;
-  TString volumeName;
 
-  int nCellsA = mNumberOfRingsA * mNumberOfSectors;
-  int nCellsC = mNumberOfRingsC * mNumberOfSectors;
+  int nCells = 2 * mNumberOfRings * mNumberOfSectors;
+  if (mExtra) {
+    int nCells = nCells + 2 * mNumberOfRings_extra * mNumberOfSectors;
+  }
 
-  LOG(info) << "number of A rings = " << mNumberOfRingsA << " number of cells = " << nCellsA;
-  LOG(info) << "number of C rings = " << mNumberOfRingsC << " number of cells = " << nCellsC;
-
-  for (int iv = 0; iv < nCellsA + nCellsC; iv++) {
-    volumeName = "fd3_node" + std::to_string(iv);
+  for (int iv = 0; iv < nCells; iv++) {
+    TString volumeName = "fd3_node" + std::to_string(iv);
     v = gGeoManager->GetVolume(volumeName);
     LOG(info) << "Adding sensitive volume => " << v->GetName();
     AddSensitiveVolume(v);
   }
+
 }
 
 float Detector::ringSize(float z, float eta)

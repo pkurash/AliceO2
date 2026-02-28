@@ -22,14 +22,16 @@ namespace fd3
 {
 struct FD3BaseParam : public o2::conf::ConfigurableParamHelper<FD3BaseParam> {
 
-  float zmodA = 1700.0f;
-  float zmodC = -1850.0f;
+  float zmodAC = 1500.0f;
+  float zmodAC_extra = 400.0f;
+
   float dzscint = 4.0f;
 
-  bool withMG = false; // modified geometry with 3 rings on A side
+  bool modules_extra = false; // switch for modules at z = +-4 m
 
   bool plateBehindA = false;
   bool fullContainer = false;
+
   float dzplate = 1.0f; // Aluminium plate width
 
   O2ParamDef(FD3BaseParam, "FD3Base");

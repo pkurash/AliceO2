@@ -99,15 +99,20 @@ class Detector : public o2::base::DetImpl<Detector>
   TGeoVolumeAssembly* buildModuleA();
   TGeoVolumeAssembly* buildModuleC();
 
+  TGeoVolumeAssembly* buildModuleA_extra();
+  TGeoVolumeAssembly* buildModuleC_extra();
+
   float ringSize(float zmod, float eta);
 
-  unsigned int mNumberOfRingsA, mNumberOfRingsC, mNumberOfSectors;
+  bool mExtra;
+  unsigned int mNumberOfRings, mNumberOfRings_extra, mNumberOfSectors;
   float mDzScint, mDzPlate;
 
-  std::vector<float> mRingSizesA = {}, mRingSizesC = {};
+  std::vector<float> mRingSizes = {}, mRingSizes_extra = {};
 
-  float mEtaMaxA, mEtaMaxC, mEtaMinA, mEtaMinC;
-  float mZA, mZC;
+  float mEtaMax, mEtaMin;
+  float  mEtaMax_extra, mEtaMin_extra;
+  float mZAC, mZAC_extra;
 
   bool mPlateBehindA, mFullContainer;
 
