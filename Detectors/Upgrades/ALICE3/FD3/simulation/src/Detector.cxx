@@ -289,7 +289,6 @@ void Detector::buildModules()
     TGeoVolumeAssembly* vFD3C_extra = buildModuleC_extra();
     vCave->AddNode(vFD3A_extra, 1, new TGeoTranslation(0., 0., mZAC_extra));
     vCave->AddNode(vFD3C_extra, 2, new TGeoTranslation(0., 0., -mZAC_extra));
-  
   }
 }
 
