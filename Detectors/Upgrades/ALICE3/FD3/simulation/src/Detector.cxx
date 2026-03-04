@@ -464,7 +464,7 @@ void Detector::defineSensitiveVolumes()
 
   int nCells = 2 * mNumberOfRings * mNumberOfSectors;
   if (mExtra) {
-    int nCells = nCells + 2 * mNumberOfRings_extra * mNumberOfSectors;
+    nCells = nCells + 2 * mNumberOfRings_extra * mNumberOfSectors;
   }
 
   for (int iv = 0; iv < nCells; iv++) {
