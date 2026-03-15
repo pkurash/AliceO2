@@ -106,15 +106,13 @@ class Detector : public o2::base::DetImpl<Detector>
 
   bool mExtra;
   unsigned int mNumberOfRings, mNumberOfRings_extra, mNumberOfSectors;
-  float mDzScint, mDzPlate;
+  float mDzScint;
 
   std::vector<float> mRingSizes = {}, mRingSizes_extra = {};
 
   float mEtaMax, mEtaMin;
   float  mEtaMax_extra, mEtaMin_extra;
   float mZAC, mZAC_extra;
-
-  bool mPlateBehindA, mFullContainer;
 
   void defineSensitiveVolumes();
   void definePassiveVolumes();

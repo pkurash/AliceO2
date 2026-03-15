@@ -29,11 +29,6 @@ struct FD3BaseParam : public o2::conf::ConfigurableParamHelper<FD3BaseParam> {
 
   bool modules_extra = false; // switch for modules at z = +-4 m
 
-  bool plateBehindA = false;
-  bool fullContainer = false;
-
-  float dzplate = 1.0f; // Aluminium plate width
-
   O2ParamDef(FD3BaseParam, "FD3Base");
 };
 

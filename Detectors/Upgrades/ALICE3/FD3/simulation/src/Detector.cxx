@@ -70,10 +70,6 @@ Detector::Detector(bool active)
   mExtra = baseParam.modules_extra;
 
   mDzScint = baseParam.dzscint / 2;
-  mDzPlate = baseParam.dzplate;
-
-  mPlateBehindA = baseParam.plateBehindA;
-  mFullContainer = baseParam.fullContainer;
 
   mZAC = baseParam.zmodAC;
   mZAC_extra = baseParam.zmodAC_extra;
@@ -89,7 +85,6 @@ Detector::Detector(bool active)
     float r = ringSize(mZAC_extra, eta);
     mRingSizes_extra.emplace_back(r);
   }
-
 }
 
 Detector::Detector(const Detector& rhs)
@@ -323,20 +318,6 @@ TGeoVolumeAssembly* Detector::buildModuleA()
     mod->AddNode(ring, ir + 1);
   }
 
-  // Aluminium plates on one or both sides of the A side module
-  if (mPlateBehindA || mFullContainer) {
-    LOG(info) << "adding container on A side";
-    auto pmed = (TGeoMedium*)gGeoManager->GetMedium("FD3_Aluminium");
-    auto pvol = new TGeoTube("pvol_fd3a", mRingSizes[0], mRingSizes[mNumberOfRings], mDzPlate);
-    auto pnod1 = new TGeoVolume("pnod1_FD3A", pvol, pmed);
-    double dpz = 2. + mDzPlate / 2;
-    mod->AddNode(pnod1, 1, new TGeoTranslation(0, 0, dpz));
-
-    if (mFullContainer) {
-      auto pnod2 = new TGeoVolume("pnod2_FD3A", pvol, pmed);
-      mod->AddNode(pnod2, 1, new TGeoTranslation(0, 0, -dpz));
-    }
-  }
   return mod;
 }
 
@@ -369,19 +350,6 @@ TGeoVolumeAssembly* Detector::buildModuleC()
       ring->AddNode(nod, cellId);
     }
     mod->AddNode(ring, ir + 1);
-  }
-
-  // Aluminium plates on both sides of the C side module
-  if (mFullContainer) {
-    LOG(info) << "adding container on C side";
-    auto pmed = (TGeoMedium*)gGeoManager->GetMedium("FD3_Aluminium");
-    auto pvol = new TGeoTube("pvol_fd3c", mRingSizes[0], mRingSizes[mNumberOfRings], mDzPlate);
-    auto pnod1 = new TGeoVolume("pnod1_FD3C", pvol, pmed);
-    auto pnod2 = new TGeoVolume("pnod2_FD3C", pvol, pmed);
-    double dpz = mDzScint / 2 + mDzPlate / 2;
-
-    mod->AddNode(pnod1, 1, new TGeoTranslation(0, 0, dpz));
-    mod->AddNode(pnod2, 2, new TGeoTranslation(0, 0, -dpz));
   }
 
   return mod;
