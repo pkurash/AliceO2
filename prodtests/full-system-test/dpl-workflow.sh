@@ -250,7 +250,7 @@ if [[ $SYNCRAWMODE == 1 ]]; then
   TOF_CONFIG+=" --for-calib"
 fi
 if [[ $SYNCRAWMODE == 1 ]] || [[ $SYNCMODE == 0 && $CTFINPUT == 1 && $GPUTYPE != "CPU" ]]; then
-  GPU_CONFIG_KEY+="GPU_proc.conservativeMemoryEstimate=1;"
+  GPU_CONFIG_KEY+="GPU_proc_scaling.conservativeMemoryEstimate=1;"
 fi
 
 if [[ $SYNCMODE == 1 && "0${ED_NO_ITS_ROF_FILTER:-}" != "01" && $BEAMTYPE == "PbPb" ]] && has_detector ITS; then
@@ -709,7 +709,10 @@ workflow_has_parameter GPU_DISPLAY && [[ $NUMAID == 0 ]] && add_W o2-gpu-display
 
 # ---------------------------------------------------------------------------------------------------------------------
 # AOD
-[[ ${SECTVTX_ON:-} != "1" ]] && AODPROD_OPT+=" --disable-secondary-vertices "
+if [[ ${SECTVTX_ON:-} != "1" ]]; then
+  AODPROD_OPT+=" --disable-secondary-vertices "
+  [[ "0$STRTRACKING" == "0" ]] && STRTRACKING=" --disable-strangeness-tracker "
+fi
 AODPROD_OPT+=" $STRTRACKING "
 workflow_has_parameter AOD && [[ -n "$AOD_SOURCES" ]] && add_W o2-aod-producer-workflow "$AODPROD_OPT --info-sources $AOD_SOURCES $DISABLE_ROOT_INPUT --aod-writer-keep dangling --aod-writer-resfile \"AO2D\" --aod-writer-resmode UPDATE $DISABLE_MC --pipeline $(get_N aod-producer-workflow AOD REST 1 AODPROD)"
 

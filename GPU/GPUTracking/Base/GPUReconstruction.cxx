@@ -309,8 +309,8 @@ int32_t GPUReconstruction::InitPhaseBeforeDevice()
     mProcessingSettings->clusterizerZSSanityCheck = mProcessingSettings->mergerSanityCheck = mProcessingSettings->outputSanityCheck = true;
   }
 
+  static_cast<GPUSettingsProcessingScaling&>(*mMemoryScalers) = GetProcessingSettings().scaling;
   mMemoryScalers->scalingFactor = GetProcessingSettings().memoryScalingFactor;
-  mMemoryScalers->conservative = GetProcessingSettings().conservativeMemoryEstimate;
   mMemoryScalers->returnMaxVal = GetProcessingSettings().forceMaxMemScalers != 0;
   if (GetProcessingSettings().forceMaxMemScalers > 1) {
     mMemoryScalers->rescaleMaxMem(GetProcessingSettings().forceMaxMemScalers);
@@ -433,11 +433,11 @@ int32_t GPUReconstruction::InitPhaseAfterDevice()
   return 0;
 }
 
-void GPUReconstruction::WriteConstantParams()
+void GPUReconstruction::WriteConstantParams(int32_t stream)
 {
   if (IsGPU()) {
     const auto threadContext = GetThreadContext();
-    WriteToConstantMemory(ptrDiff(&processors()->param, processors()), &param(), sizeof(param()), -1);
+    WriteToConstantMemory(ptrDiff(&processors()->param, processors()), &param(), sizeof(param()), stream);
   }
 }
 
