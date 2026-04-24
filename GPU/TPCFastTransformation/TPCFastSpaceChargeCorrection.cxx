@@ -147,6 +147,7 @@ void TPCFastSpaceChargeCorrection::setActualBufferAddress(char* actualFlatBuffer
     }
     size_t bufferSize = scBufferOffset + scBufferSize;
     for (int32_t is = 0; is < 3; is++) {
+      bufferSize = alignSize(bufferSize, SplineType::getParameterAlignmentBytes());
       mCorrectionData[is] = reinterpret_cast<char*>(mFlatBufferPtr + bufferSize);
       bufferSize += mSectorDataSizeBytes[is] * mGeo.getNumberOfSectors();
     }
@@ -255,7 +256,7 @@ void TPCFastSpaceChargeCorrection::setActualBufferAddress(char* actualFlatBuffer
 
   for (int32_t is = 0; is < 3; is++) {
     size_t oldCorrectionDataOffset = alignSize(oldBufferSize, SplineType::getParameterAlignmentBytes());
-    size_t correctionDataOffset = bufferSize;
+    size_t correctionDataOffset = alignSize(bufferSize, SplineType::getParameterAlignmentBytes());
     mCorrectionData[is] = reinterpret_cast<char*>(mFlatBufferPtr + correctionDataOffset);
     memmove(mCorrectionData[is], mFlatBufferPtr + oldCorrectionDataOffset, mSectorDataSizeBytes[is] * mGeo.getNumberOfSectors());
     oldBufferSize = oldCorrectionDataOffset + mSectorDataSizeBytes[is] * mGeo.getNumberOfSectors();
@@ -508,6 +509,7 @@ void TPCFastSpaceChargeCorrection::finishConstruction()
   size_t bufferSize = scBufferOffsets[0] + scBufferSize;
   size_t correctionDataOffset[3];
   for (int32_t is = 0; is < 3; is++) {
+    bufferSize = alignSize(bufferSize, SplineType::getParameterAlignmentBytes());
     correctionDataOffset[is] = bufferSize;
     mSectorDataSizeBytes[is] = 0;
     for (int32_t j = 0; j < mGeo.getNumberOfRows(); j++) {
@@ -524,6 +526,7 @@ void TPCFastSpaceChargeCorrection::finishConstruction()
         const SplineTypeInvYZ& splineInvYZ = reinterpret_cast<const SplineTypeInvYZ&>(spline);
         mSectorDataSizeBytes[is] += splineInvYZ.getSizeOfParameters();
       }
+      mSectorDataSizeBytes[is] = alignSize(mSectorDataSizeBytes[is], SplineType::getParameterAlignmentBytes());
     }
     bufferSize += mSectorDataSizeBytes[is] * mGeo.getNumberOfSectors();
   }
