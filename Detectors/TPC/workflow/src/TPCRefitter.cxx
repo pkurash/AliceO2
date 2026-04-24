@@ -17,7 +17,7 @@
 #include "DataFormatsGlobalTracking/RecoContainerCreateTracksVariadic.h"
 #include "SimulationDataFormat/MCCompLabel.h"
 #include "TPCCalibration/VDriftHelper.h"
-#include "TPCCalibration/CorrectionMapsLoader.h"
+#include "TPCFastTransformPOD.h"
 #include "ReconstructionDataFormats/GlobalTrackID.h"
 #include "DetectorsBase/Propagator.h"
 #include "Framework/ConfigParamRegistry.h"
@@ -63,13 +63,8 @@ class TPCRefitterSpec final : public Task
     Streamer = 0x1,  ///< Write per track streamer information
     TFVectors = 0x2, ///< Writer vectors per TF
   };
-  TPCRefitterSpec(std::shared_ptr<DataRequest> dr, std::shared_ptr<o2::base::GRPGeomRequest> gr, const o2::tpc::CorrectionMapsLoaderGloOpts& sclOpts, GTrackID::mask_t src, bool useMC)
-    : mDataRequest(dr), mGGCCDBRequest(gr), mTracksSrc(src), mUseMC(useMC)
-  {
-    mTPCCorrMapsLoader.setLumiScaleType(sclOpts.lumiType);
-    mTPCCorrMapsLoader.setLumiScaleMode(sclOpts.lumiMode);
-    mTPCCorrMapsLoader.setCheckCTPIDCConsistency(sclOpts.checkCTPIDCconsistency);
-  }
+  TPCRefitterSpec(std::shared_ptr<DataRequest> dr, std::shared_ptr<o2::base::GRPGeomRequest> gr, GTrackID::mask_t src, bool useMC)
+    : mDataRequest(dr), mGGCCDBRequest(gr), mTracksSrc(src), mUseMC(useMC) {}
   ~TPCRefitterSpec() final = default;
   void init(InitContext& ic) final;
   void run(ProcessingContext& pc) final;
@@ -83,7 +78,7 @@ class TPCRefitterSpec final : public Task
   std::shared_ptr<DataRequest> mDataRequest;
   std::shared_ptr<o2::base::GRPGeomRequest> mGGCCDBRequest;
   o2::tpc::VDriftHelper mTPCVDriftHelper{};
-  o2::tpc::CorrectionMapsLoader mTPCCorrMapsLoader{};
+  const o2::gpu::TPCFastTransformPOD* mTPCCorrMaps{nullptr};
   bool mUseMC{false}; ///< MC flag
   bool mUseGPUModel{false};
   float mXRef = 83.;
@@ -184,7 +179,6 @@ void TPCRefitterSpec::init(InitContext& ic)
     mXRef = 0.;
   }
   mGenerator = std::mt19937(std::random_device{}());
-  mTPCCorrMapsLoader.init(ic);
 }
 
 void TPCRefitterSpec::run(ProcessingContext& pc)
@@ -212,29 +206,8 @@ void TPCRefitterSpec::updateTimeDependentParams(ProcessingContext& pc)
 {
   o2::base::GRPGeomHelper::instance().checkUpdates(pc);
   mTPCVDriftHelper.extractCCDBInputs(pc);
-  mTPCCorrMapsLoader.extractCCDBInputs(pc);
-  static bool initOnceDone = false;
-  if (!initOnceDone) { // this params need to be queried only once
-    initOnceDone = true;
-    // none at the moment
-  }
-  // we may have other params which need to be queried regularly
-  bool updateMaps = false;
-  if (mTPCCorrMapsLoader.isUpdated()) {
-    mTPCCorrMapsLoader.acknowledgeUpdate();
-    updateMaps = true;
-  }
-  if (mTPCVDriftHelper.isUpdated()) {
-    LOGP(info, "Updating TPC fast transform map with new VDrift factor of {} wrt reference {} and DriftTimeOffset correction {} wrt {} from source {}",
-         mTPCVDriftHelper.getVDriftObject().corrFact, mTPCVDriftHelper.getVDriftObject().refVDrift,
-         mTPCVDriftHelper.getVDriftObject().timeOffsetCorr, mTPCVDriftHelper.getVDriftObject().refTimeOffset,
-         mTPCVDriftHelper.getSourceName());
-    mTPCVDriftHelper.acknowledgeUpdate();
-    updateMaps = true;
-  }
-  if (updateMaps) {
-    mTPCCorrMapsLoader.updateVDrift(mTPCVDriftHelper.getVDriftObject().corrFact, mTPCVDriftHelper.getVDriftObject().refVDrift, mTPCVDriftHelper.getVDriftObject().getTimeOffset());
-  }
+  auto const& raw = pc.inputs().get<const char*>("corrMap");
+  mTPCCorrMaps = &o2::gpu::TPCFastTransformPOD::get(raw);
 }
 
 void TPCRefitterSpec::fillOccupancyVectors(o2::globaltracking::RecoContainer& recoData)
@@ -335,14 +308,14 @@ void TPCRefitterSpec::process(o2::globaltracking::RecoContainer& recoData)
     mTPCTrkLabels = recoData.getTPCTracksMCLabels();
   }
 
-  mTPCRefitter = std::make_unique<o2::gpu::GPUO2InterfaceRefit>(mTPCClusterIdxStruct, &mTPCCorrMapsLoader, prop->getNominalBz(), mTPCTrackClusIdx.data(), 0, mTPCRefitterShMap.data(), mTPCRefitterOccMap.data(), mTPCRefitterOccMap.size(), nullptr, prop);
+  mTPCRefitter = std::make_unique<o2::gpu::GPUO2InterfaceRefit>(mTPCClusterIdxStruct, mTPCCorrMaps, prop->getNominalBz(), mTPCTrackClusIdx.data(), 0, mTPCRefitterShMap.data(), mTPCRefitterOccMap.data(), mTPCRefitterOccMap.size(), nullptr, prop);
 
   mVdriftTB = mTPCVDriftHelper.getVDriftObject().getVDrift() * o2::tpc::ParameterElectronics::Instance().ZbinWidth; // VDrift expressed in cm/TimeBin
   mTPCTBBias = mTPCVDriftHelper.getVDriftObject().getTimeOffset() / (8 * o2::constants::lhc::LHCBunchSpacingMUS);
 
   auto dumpClusters = [this] {
     static int tf = 0;
-    const auto* corrMap = this->mTPCCorrMapsLoader.getCorrMap();
+    const auto* corrMap = this->mTPCCorrMaps;
     for (int sector = 0; sector < 36; sector++) {
       float alp = ((sector % 18) * 20 + 10) * TMath::DegToRad();
       float sn = TMath::Sin(alp), cs = TMath::Cos(alp);
@@ -411,9 +384,6 @@ void TPCRefitterSpec::finaliseCCDB(ConcreteDataMatcher& matcher, void* obj)
     return;
   }
   if (mTPCVDriftHelper.accountCCDBInputs(matcher, obj)) {
-    return;
-  }
-  if (mTPCCorrMapsLoader.accountCCDBInputs(matcher, obj)) {
     return;
   }
 }
@@ -500,7 +470,7 @@ bool TPCRefitterSpec::processTPCTrack(o2::tpc::TrackTPC tr, o2::MCCompLabel lbl,
   // auto prepClus = [this, &tr, &clSector, &clRow, &clX, &clY, &clZ, &clXI, &clYI, &clZI, &clNative](float t) { // extract cluster info
   auto prepClus = [this, &tr, &clData](float t) { // extract cluster info
     int count = tr.getNClusters();
-    const auto* corrMap = this->mTPCCorrMapsLoader.getCorrMap();
+    const auto* corrMap = this->mTPCCorrMaps;
     const o2::tpc::ClusterNative* cl = nullptr;
     for (int ic = count; ic--;) {
       uint8_t sector, row;
@@ -525,7 +495,7 @@ bool TPCRefitterSpec::processTPCTrack(o2::tpc::TrackTPC tr, o2::MCCompLabel lbl,
       clData.clZI.emplace_back(z);
 
       // transformation without distortions
-      mTPCCorrMapsLoader.Transform(sector, row, cl->getPad(), cl->getTime(), x, y, z, t); // nominal time of the track
+      mTPCCorrMaps->Transform(sector, row, cl->getPad(), cl->getTime(), x, y, z, t); // nominal time of the track
       clData.clX.emplace_back(x);
       clData.clY.emplace_back(y);
       clData.clZ.emplace_back(z);
@@ -740,7 +710,7 @@ void TPCRefitterSpec::processCosmics(o2::globaltracking::RecoContainer& recoData
   }
 }
 
-DataProcessorSpec getTPCRefitterSpec(GTrackID::mask_t srcTracks, GTrackID::mask_t srcClusters, bool useMC, const o2::tpc::CorrectionMapsLoaderGloOpts& sclOpts, bool requestCosmics)
+DataProcessorSpec getTPCRefitterSpec(GTrackID::mask_t srcTracks, GTrackID::mask_t srcClusters, bool useMC, bool requestCosmics)
 {
   std::vector<OutputSpec> outputs;
   Options opts{
@@ -778,13 +748,12 @@ DataProcessorSpec getTPCRefitterSpec(GTrackID::mask_t srcTracks, GTrackID::mask_
                                                               dataRequest->inputs,
                                                               true);
   o2::tpc::VDriftHelper::requestCCDBInputs(dataRequest->inputs);
-  o2::tpc::CorrectionMapsLoader::requestCCDBInputs(dataRequest->inputs, opts, sclOpts);
-
+  dataRequest->inputs.emplace_back("corrMap", o2::header::gDataOriginTPC, "TPCCORRMAP", 0, Lifetime::Timeframe);
   return DataProcessorSpec{
     "tpc-refitter",
     dataRequest->inputs,
     outputs,
-    AlgorithmSpec{adaptFromTask<TPCRefitterSpec>(dataRequest, ggRequest, sclOpts, srcTracks, useMC)},
+    AlgorithmSpec{adaptFromTask<TPCRefitterSpec>(dataRequest, ggRequest, srcTracks, useMC)},
     opts};
 }
 

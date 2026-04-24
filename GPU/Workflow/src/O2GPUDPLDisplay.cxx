@@ -24,10 +24,8 @@
 #include "GPUO2InterfaceDisplay.h"
 #include "GPUO2InterfaceUtils.h"
 #include "GPUO2InterfaceConfiguration.h"
-#include "TPCFastTransform.h"
 #include "TPCReconstruction/TPCFastTransformHelperO2.h"
-#include "CorrectionMapsHelper.h"
-#include "TPCCalibration/CorrectionMapsLoader.h"
+#include "TPCFastTransformPOD.h"
 #include "GlobalTrackingWorkflowHelpers/InputHelper.h"
 #include "DataFormatsTPC/WorkflowHelper.h"
 #include "DataFormatsTRD/RecoInputContainer.h"
@@ -67,17 +65,11 @@ void O2GPUDPLDisplaySpec::init(InitContext& ic)
   mConfig->configGRP.solenoidBzNominalGPU = 0;
   mConfParam.reset(new GPUSettingsO2(mConfig->ReadConfigurableParam()));
 
-  mFastTransformHelper.reset(new o2::tpc::CorrectionMapsLoader());
-  mFastTransform = std::move(TPCFastTransformHelperO2::instance()->create(0));
-  mFastTransformRef = std::move(TPCFastTransformHelperO2::instance()->create(0));
-  mFastTransformMShape = std::move(TPCFastTransformHelperO2::instance()->create(0));
-  mFastTransformHelper->setCorrMap(mFastTransform.get());
-  mFastTransformHelper->setCorrMapRef(mFastTransformRef.get());
-  mFastTransformHelper->setCorrMapMShape(mFastTransformMShape.get());
-  mConfig->configCalib.fastTransform = mFastTransformHelper->getCorrMap();
-  mConfig->configCalib.fastTransformRef = mFastTransformHelper->getCorrMapRef();
-  mConfig->configCalib.fastTransformMShape = mFastTransformHelper->getCorrMapMShape();
-  mConfig->configCalib.fastTransformHelper = mFastTransformHelper.get();
+  aligned_unique_buffer_ptr<TPCFastTransformPOD> buffer;
+  gpu::TPCFastTransformPOD::create(buffer, *TPCFastTransformHelperO2::instance()->create(0));
+  mBufferFastTransform = std::move(buffer);
+  mFastTransform = mBufferFastTransform.get();
+  mConfig->configCalib.fastTransform = mFastTransform;
 
   mTrdGeo.reset(new o2::trd::GeometryFlat());
   mConfig->configCalib.trdGeometry = mTrdGeo.get();

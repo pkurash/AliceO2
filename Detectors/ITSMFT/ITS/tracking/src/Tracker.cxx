@@ -31,22 +31,15 @@ using o2::its::constants::GB;
 template <int NLayers>
 Tracker<NLayers>::Tracker(TrackerTraits<NLayers>* traits) : mTraits(traits)
 {
-  /// Initialise standard configuration with 1 iteration
-  mTrkParams.resize(1);
-  if (traits->isGPU()) {
-    ITSGpuTrackingParamConfig::Instance().maybeOverride();
-    ITSGpuTrackingParamConfig::Instance().printKeyValues(true, true);
-  }
 }
 
 template <int NLayers>
-void Tracker<NLayers>::clustersToTracks(const LogFunc& logger, const LogFunc& error)
+float Tracker<NLayers>::clustersToTracks(const LogFunc& logger, const LogFunc& error)
 {
   LogFunc evalLog = [](const std::string&) {};
 
-  double total{0};
+  float total{0};
   mTraits->updateTrackingParameters(mTrkParams);
-  mTimeFrame->updateROFVertexLookupTable();
 
   int maxNvertices{-1};
   if (mTrkParams[0].PerPrimaryVertexProcessing) {
@@ -78,12 +71,13 @@ void Tracker<NLayers>::clustersToTracks(const LogFunc& logger, const LogFunc& er
       if (iteration == 3 && mTrkParams[0].DoUPCIteration) {
         mTimeFrame->useUPCMask();
       }
-      float timeTracklets{0.}, timeCells{0.}, timeNeighbours{0.}, timeRoads{0.};
+      float timeFrame{0.}, timeTracklets{0.}, timeCells{0.}, timeNeighbours{0.}, timeRoads{0.};
       size_t nTracklets{0}, nCells{0}, nNeighbours{0};
       int nTracks{-static_cast<int>(mTimeFrame->getNumberOfTracks())};
       iVertex = std::min(maxNvertices, 0);
       logger(std::format("==== ITS {} Tracking iteration {} summary ====", mTraits->getName(), iteration));
-      total += evaluateTask(&Tracker::initialiseTimeFrame, StateNames[mCurState = TFInit], iteration, logger, iteration);
+      total += timeFrame = evaluateTask(&Tracker::initialiseTimeFrame, StateNames[mCurState = TFInit], iteration, evalLog, iteration);
+      logger(std::format(" - TimeFrame initialisation completed in {:.2f} ms", timeFrame));
       do {
         timeTracklets += evaluateTask(&Tracker::computeTracklets, StateNames[mCurState = Trackleting], iteration, evalLog, iteration, iVertex);
         nTracklets += mTraits->getTFNumberOfTracklets();
@@ -98,24 +92,18 @@ void Tracker<NLayers>::clustersToTracks(const LogFunc& logger, const LogFunc& er
       logger(std::format(" - Neighbours finding: {} neighbours found in {:.2f} ms", nNeighbours, timeNeighbours));
       logger(std::format(" - Track finding: {} tracks found in {:.2f} ms", nTracks + mTimeFrame->getNumberOfTracks(), timeRoads));
       total += timeTracklets + timeCells + timeNeighbours + timeRoads;
-      if (mTrkParams[iteration].PrintMemory) {
-        mMemoryPool->print();
-      }
-    }
-    if constexpr (constants::DoTimeBenchmarks) {
-      logger(std::format("=== TimeSlice {} processing completed in: {:.2f} ms using {} thread(s) ===", mTimeSlice, total, mTraits->getNThreads()));
     }
   } catch (const BoundedMemoryResource::MemoryLimitExceeded& err) {
     handleException(err);
-    return;
+    return -1.f;
   } catch (const std::bad_alloc& err) {
     handleException(err);
-    return;
+    return -1.f;
   } catch (const std::exception& err) {
     error(std::format("Uncaught exception, all bets are off... {}", err.what()));
     // clear tracks explicitly since if not fatalising on exception this may contain partial output
     mTimeFrame->getTracks().clear();
-    return;
+    return -1.f;
   }
 
   if (mTimeFrame->hasMCinformation()) {
@@ -127,10 +115,7 @@ void Tracker<NLayers>::clustersToTracks(const LogFunc& logger, const LogFunc& er
   ++mTimeFrameCounter;
   mTotalTime += total;
 
-  if (mTrkParams[0].PrintMemory) {
-    mTimeFrame->printArtefactsMemory();
-    mMemoryPool->print();
-  }
+  return total;
 }
 
 template <int NLayers>

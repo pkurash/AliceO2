@@ -10,6 +10,8 @@
 // or submit itself to any jurisdiction.
 
 #include <algorithm>
+#include <array>
+#include <format>
 #include <memory>
 
 #include <oneapi/tbb/task_arena.h>
@@ -128,12 +130,12 @@ void ITSTrackingInterface::run(framework::ProcessingContext& pc)
   gsl::span<const o2::itsmft::PhysTrigger> physTriggers;
   std::vector<o2::itsmft::PhysTrigger> fromTRD;
   if (mUseTriggers == 2) { // use TRD triggers
-    o2::InteractionRecord ir{0, tfInfo.firstTForbit};
+    o2::InteractionRecord irFirstTF{0, tfInfo.firstTForbit};
     auto trdTriggers = pc.inputs().get<gsl::span<o2::trd::TriggerRecord>>("phystrig");
     for (const auto& trig : trdTriggers) {
-      if (trig.getBCData() >= ir && trig.getNumberOfTracklets()) {
-        ir = trig.getBCData();
-        fromTRD.emplace_back(o2::itsmft::PhysTrigger{.ir = ir, .data = 0});
+      if (trig.getBCData() >= irFirstTF && trig.getNumberOfTracklets()) {
+        irFirstTF = trig.getBCData();
+        fromTRD.emplace_back(o2::itsmft::PhysTrigger{.ir = irFirstTF, .data = 0});
       }
     }
     physTriggers = gsl::span<const o2::itsmft::PhysTrigger>(fromTRD.data(), fromTRD.size());
@@ -157,6 +159,11 @@ void ITSTrackingInterface::run(framework::ProcessingContext& pc)
   auto& allTrackLabels = mIsMC ? pc.outputs().make<std::vector<o2::MCCompLabel>>(Output{"ITS", "TRACKSMCTR", 0}) : dummyMCLabTracks;
   auto& allVerticesLabels = mIsMC ? pc.outputs().make<std::vector<o2::MCCompLabel>>(Output{"ITS", "VERTICESMCTR", 0}) : dummyMCLabVerts;
   auto& allVerticesPurities = mIsMC ? pc.outputs().make<std::vector<float>>(Output{"ITS", "VERTICESMCPUR", 0}) : dummyMCPurVerts;
+
+  if (!hasClusters) {
+    // skip processing if no data is received entirely but still create empty output so consumers do not wait
+    return;
+  }
 
   if (mOverrideBeamEstimation) {
     mTimeFrame->setBeamPosition(mMeanVertex->getX(),
@@ -186,11 +193,10 @@ void ITSTrackingInterface::run(framework::ProcessingContext& pc)
     mTimeFrame->getROFMaskView().print(iLayer);
   }
 
-  float vertexerElapsedTime{0.f};
+  float vertexerElapsedTime{0.f}, trackerElapsedTime{0.f};
   if (mRunVertexer) {
     // Run seeding vertexer
     vertexerElapsedTime = mVertexer->clustersToVertices(logger);
-    // FIXME: this is a temporary stop-gap measure until we figure the rest out
     const auto& vtx = mTimeFrame->getPrimaryVertices();
     vertices.insert(vertices.begin(), vtx.begin(), vtx.end());
     if (mIsMC) {
@@ -207,15 +213,13 @@ void ITSTrackingInterface::run(framework::ProcessingContext& pc)
   auto clockROFspan = rofsinput[clockLayerId];
   auto clockTiming = mTimeFrame->getROFOverlapTableView().getClockLayer();
   for (auto iRof{0}; iRof < clockROFspan.size(); ++iRof) {
-    bounded_vector<Vertex> vtxVecLoc;
     auto& vtxROF = vertROFvec.emplace_back(clockROFspan[iRof]);
-    vtxROF.setFirstEntry((int)vertices.size());
-
     if (mRunVertexer) {
       auto vtxSpan = mTimeFrame->getPrimaryVertices(clockLayerId, iRof);
       if (o2::its::TrackerParamConfig::Instance().doUPCIteration) {
         if (!vtxSpan.empty()) {
-          if (vtxSpan[0].isFlagSet(Vertex::UPCMode) == 1) { // at least one vertex in this ROF and it is from second vertex iteration
+          bool hasUPC = std::any_of(vtxSpan.begin(), vtxSpan.end(), [](const auto& v) { return v.isFlagSet(Vertex::UPCMode); });
+          if (hasUPC) { // at least one vertex in this ROF and it is from second vertex iteration
             LOGP(debug, "ROF {} rejected as vertices are from the UPC iteration", iRof);
             processUPCMask.selectROF({clockTiming.getROFStartInBC(iRof), clockTiming.getROFEndInBC(iRof)});
             vtxROF.setFlag(o2::itsmft::ROFRecord::VtxUPCMode);
@@ -228,31 +232,33 @@ void ITSTrackingInterface::run(framework::ProcessingContext& pc)
       } else {
         vtxROF.setFlag(o2::itsmft::ROFRecord::VtxStdMode);
       }
-      vtxROF.setNEntries((int)vtxSpan.size());
     }
   }
 
   if (mRunVertexer && hasClusters) {
-    LOG(info) << fmt::format(" - Vertex seeding total elapsed time: {} ms for {} vertices found",
-                             vertexerElapsedTime,
-                             mTimeFrame->getPrimaryVerticesNum());
+    LOGP(info, " + Vertex seeding total elapsed time: {} ms for {} vertices found", vertexerElapsedTime, mTimeFrame->getPrimaryVerticesNum());
   }
 
   if (mOverrideBeamEstimation) {
-    LOG(info) << fmt::format(" - Beam position set to: {}, {} from meanvertex object", mTimeFrame->getBeamX(), mTimeFrame->getBeamY());
+    LOG(info) << fmt::format(" + Beam position set to: {}, {} from meanvertex object", mTimeFrame->getBeamX(), mTimeFrame->getBeamY());
   } else {
-    LOG(info) << fmt::format(" - Beam position computed for the TF: {}, {}", mTimeFrame->getBeamX(), mTimeFrame->getBeamY());
+    LOG(info) << fmt::format(" + Beam position computed for the TF: {}, {}", mTimeFrame->getBeamX(), mTimeFrame->getBeamY());
   }
 
   if (hasClusters) {
     mTimeFrame->setMultiplicityCutMask(processMultiplictyMask);
     mTimeFrame->setUPCCutMask(processUPCMask);
-    // Run CA tracker
     if (mMode == o2::its::TrackingMode::Async && o2::its::TrackerParamConfig::Instance().fataliseUponFailure) {
-      mTracker->clustersToTracks(logger, fatalLogger);
+      trackerElapsedTime = mTracker->clustersToTracks(logger, fatalLogger);
     } else {
-      mTracker->clustersToTracks(logger, errorLogger);
+      trackerElapsedTime = mTracker->clustersToTracks(logger, errorLogger);
     }
+    LOGP(info, " + Tracking total elapse time: {} ms for {} tracks found", trackerElapsedTime, mTimeFrame->getNumberOfTracks());
+  }
+  if constexpr (constants::DoTimeBenchmarks) {
+    const auto& trackConf = o2::its::TrackerParamConfig::Instance();
+    const auto& vertConf = o2::its::VertexerParamConfig::Instance();
+    logger(std::format("=== TimeSlice {} processing completed in: {:.2f} ms using {}/{} thread(s) ===", tfInfo.timeslice, trackerElapsedTime + vertexerElapsedTime, vertConf.nThreads, trackConf.nThreads));
   }
 
   size_t totTracks{mTimeFrame->getNumberOfTracks()}, totClusIDs{mTimeFrame->getNumberOfUsedClusters()};
@@ -261,7 +267,7 @@ void ITSTrackingInterface::run(framework::ProcessingContext& pc)
     allClusIdx.reserve(totClusIDs);
 
     if (mTimeFrame->hasBogusClusters()) {
-      LOG(warning) << fmt::format(" - The processed timeframe had {} clusters with wild z coordinates, check the dictionaries", mTimeFrame->hasBogusClusters());
+      LOG(warning) << fmt::format(" + The processed timeframe had {} clusters with wild z coordinates, check the dictionaries", mTimeFrame->hasBogusClusters());
     }
 
     auto& tracks = mTimeFrame->getTracks();
@@ -345,7 +351,7 @@ void ITSTrackingInterface::run(framework::ProcessingContext& pc)
     }
   }
 
-  LOGP(info, "ITSTracker pushed {} tracks in {} rofs and {} vertices {}", allTracks.size(), allTrackROFs.size(), vertices.size(), ((mDoStaggering) ? "in staggered-readout mode" : "in normal mode"));
+  LOGP(info, "ITSTracker pushed {} tracks in {} rofs and {} vertices {}", allTracks.size(), allTrackROFs.size(), vertices.size(), ((mDoStaggering) ? "in staggered-readout mode" : ""));
   if (mIsMC) {
     LOGP(info, "ITSTracker pushed {} track labels", allTrackLabels.size());
     LOGP(info, "ITSTracker pushed {} vertex labels", allVerticesLabels.size());

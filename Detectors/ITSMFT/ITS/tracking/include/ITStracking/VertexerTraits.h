@@ -102,6 +102,9 @@ class VertexerTraits
         elem = key;
       }
     }
+    if (maxCount <= 1) { // need >50%
+      elem.setFakeFlag();
+    }
     return std::make_pair(elem, static_cast<float>(maxCount) / static_cast<float>(elements.size()));
   }
 
@@ -112,6 +115,8 @@ class VertexerTraits
   // Frame related quantities
   TimeFrameN* mTimeFrame = nullptr; // observer ptr
  private:
+  bool skipROF(int iteration, int rof) const;
+
   std::shared_ptr<BoundedMemoryResource> mMemoryPool;
   std::shared_ptr<tbb::task_arena> mTaskArena;
 };

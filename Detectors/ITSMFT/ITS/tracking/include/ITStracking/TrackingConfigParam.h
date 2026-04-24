@@ -15,6 +15,7 @@
 #include <limits>
 #include "CommonUtils/ConfigurableParam.h"
 #include "CommonUtils/ConfigurableParamHelper.h"
+#include "ITStracking/Constants.h"
 
 namespace o2::its
 {
@@ -24,24 +25,28 @@ struct VertexerParamConfig : public o2::conf::ConfigurableParamHelper<VertexerPa
 
   int nIterations = 1;         // Number of vertexing passes to perform.
   int vertPerRofThreshold = 0; // Maximum number of vertices per ROF to trigger second a iteration.
-  int deltaRof = 0;            // Number of ROFs to be considered for the vertexing.
 
-  // geometrical cuts for tracklet selection
+  // geometrical cuts for tracklet selection for Pb-Pb
   float zCut = 0.002f;
   float phiCut = 0.005f;
-  float pairCut = 0.04f;
-  float clusterCut = 0.8f;
-  float histPairCut = 0.04f;
-  float tanLambdaCut = 0.002f;      // tanLambda = deltaZ/deltaR
-  float lowMultBeamDistCut = 0.1f;  // XY cut for low-multiplicity pile up
-  int vertNsigmaCut = 4;            // N sigma cut for vertex XY
-  float vertRadiusSigma = 0.05f;    // sigma of vertex XY
-  float trackletSigma = 0.01f;      // tracklet to vertex sigma
+  float pairCut = 0.0211211f;
+  float clusterCut = 0.4275412f;
+  float coarseZWindow = 0.6521316f;
+  float seedDedupZCut = 0.1461061f;
+  float refitDedupZCut = 0.1873750f;
+  float duplicateZCut = 0.7985643f;
+  float finalSelectionZCut = 0.2932624f;
+  float duplicateDistance2Cut = 0.0223001f;
+  float tanLambdaCut = 0.002f; // tanLambda = deltaZ/deltaR
+  float nSigmaCut = 0.0479011f;
   float maxZPositionAllowed = 25.f; // 4x sZ of the beam
 
   // Artefacts selections
-  int clusterContributorsCut = 16; // minimum number of contributors for the second vertex found in the same ROF (pileup cut)
-  int maxTrackletsPerCluster = 1e2;
+  int clusterContributorsCut = 3; // minimum number of contributors for an accepted final vertex
+  int suppressLowMultDebris = 16; // suppress all vertices below this threshold if a vertex was already found in a rof
+  int seedMemberRadiusTime = 0;
+  int seedMemberRadiusZ = 2;
+  int maxTrackletsPerCluster = 100;
   int phiSpan = -1;
   int zSpan = -1;
   int ZBins = 1;     // z-phi index table configutation: number of z bins
@@ -58,18 +63,17 @@ struct VertexerParamConfig : public o2::conf::ConfigurableParamHelper<VertexerPa
 };
 
 struct TrackerParamConfig : public o2::conf::ConfigurableParamHelper<TrackerParamConfig> {
-  // Use TGeo for mat. budget
-  static const int MaxIter = 4;
   static const int MinTrackLength = 4;
   static const int MaxTrackLength = 7;
-  bool useMatCorrTGeo = false;                                              // use full geometry to corect for material budget accounting in the fits. Default is to use the material budget LUT.
-  bool useFastMaterial = false;                                             // use faster material approximation for material budget accounting in the fits.
-  int addTimeError[7] = {0};                                                // configure the width of the window in BC to be considered for the tracking.
-  int minTrackLgtIter[MaxIter] = {};                                        // minimum track length at each iteration, used only if >0, otherwise use code defaults
-  uint8_t startLayerMask[MaxIter] = {};                                     // mask of start layer for this iteration (if >0)
-  float minPtIterLgt[MaxIter * (MaxTrackLength - MinTrackLength + 1)] = {}; // min.pT for given track length at this iteration, used only if >0, otherwise use code defaults
-  float sysErrY2[7] = {0};                                                  // systematic error^2 in Y per layer
-  float sysErrZ2[7] = {0};                                                  // systematic error^2 in Z per layer
+
+  bool useMatCorrTGeo = false;                                                         // use full geometry to corect for material budget accounting in the fits. Default is to use the material budget LUT.
+  bool useFastMaterial = false;                                                        // use faster material approximation for material budget accounting in the fits.
+  int addTimeError[7] = {0};                                                           // configure the width of the window in BC to be considered for the tracking.
+  int minTrackLgtIter[constants::MaxIter] = {};                                        // minimum track length at each iteration, used only if >0, otherwise use code defaults
+  uint8_t startLayerMask[constants::MaxIter] = {};                                     // mask of start layer for this iteration (if >0)
+  float minPtIterLgt[constants::MaxIter * (MaxTrackLength - MinTrackLength + 1)] = {}; // min.pT for given track length at this iteration, used only if >0, otherwise use code defaults
+  float sysErrY2[7] = {0};                                                             // systematic error^2 in Y per layer
+  float sysErrZ2[7] = {0};                                                             // systematic error^2 in Z per layer
   float maxChi2ClusterAttachment = -1.f;
   float maxChi2NDF = -1.f;
   float nSigmaCut = -1.f;
@@ -85,7 +89,7 @@ struct TrackerParamConfig : public o2::conf::ConfigurableParamHelper<TrackerPara
   bool overrideBeamEstimation = false;     // use beam position from meanVertex CCDB object
   int trackingMode = -1;                   // -1: unset, 0=sync, 1=async, 2=cosmics used by gpuwf only
   bool doUPCIteration = false;             // Perform an additional iteration for UPC events on tagged vertices. You want to combine this config with VertexerParamConfig.nIterations=2
-  int nIterations = MaxIter;               // overwrite the number of iterations
+  int nIterations = constants::MaxIter;    // overwrite the number of iterations
   int reseedIfShorter = 6;                 // for the final refit reseed the track with circle if they are shorter than this value
   bool shiftRefToCluster{true};            // TrackFit: after update shift the linearization reference to cluster
   bool repeatRefitOut{false};              // repeat outward refit using inward refit as a seed
@@ -99,43 +103,6 @@ struct TrackerParamConfig : public o2::conf::ConfigurableParamHelper<TrackerPara
   bool allowSharingFirstCluster = false; // allow first cluster sharing among tracks
 
   O2ParamDef(TrackerParamConfig, "ITSCATrackerParam");
-};
-
-struct ITSGpuTrackingParamConfig : public o2::conf::ConfigurableParamHelper<ITSGpuTrackingParamConfig> {
-  static constexpr int MaxIter = TrackerParamConfig::MaxIter;
-
-  /// Set nBlocks/nThreads to summarily override all kernel launch parameters in each iteration.
-  /// Parameters must start with nBlocks/nThreads.
-  static constexpr int OverrideValue{-1};
-  static constexpr char const* BlocksName = "nBlocks";
-  static constexpr char const* ThreadsName = "nThreads";
-  int nBlocks = OverrideValue;
-  int nThreads = OverrideValue;
-  void maybeOverride() const;
-
-  /// Individual kernel launch parameter for each iteration
-  int nBlocksLayerTracklets[MaxIter] = {60, 60, 60, 60};
-  int nThreadsLayerTracklets[MaxIter] = {256, 256, 256, 256};
-
-  int nBlocksLayerCells[MaxIter] = {60, 60, 60, 60};
-  int nThreadsLayerCells[MaxIter] = {256, 256, 256, 256};
-
-  int nBlocksFindNeighbours[MaxIter] = {60, 60, 60, 60};
-  int nThreadsFindNeighbours[MaxIter] = {256, 256, 256, 256};
-
-  int nBlocksProcessNeighbours[MaxIter] = {60, 60, 60, 60};
-  int nThreadsProcessNeighbours[MaxIter] = {256, 256, 256, 256};
-
-  int nBlocksTracksSeeds[MaxIter] = {60, 60, 60, 60};
-  int nThreadsTracksSeeds[MaxIter] = {256, 256, 256, 256};
-
-  int nBlocksVtxComputeTracklets[2] = {60, 60};
-  int nThreadsVtxComputeTracklets[2] = {256, 256};
-
-  int nBlocksVtxComputeMatching[2] = {60, 60};
-  int nThreadsVtxComputeMatching[2] = {256, 256};
-
-  O2ParamDef(ITSGpuTrackingParamConfig, "ITSGpuTrackingParam");
 };
 
 } // namespace o2::its

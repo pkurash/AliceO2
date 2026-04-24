@@ -115,7 +115,12 @@ EVE_OPT=" --jsons-folder $EDJSONS_DIR"
 [[ "0$DISABLE_ROOT_OUTPUT" == "00" ]] && DISABLE_ROOT_OUTPUT=
 
 [[ "0$ITSSTAGGERED" == "01" ]] && ITS_STAGGERED=" --enable-its-staggering " || ITS_STAGGERED=
-[[ "0$MFTSTAGGERED" == "01" ]] && MFT_STAGGERED=" --enable-its-staggering " || MFT_STAGGERED=
+[[ "0$MFTSTAGGERED" == "01" ]] && MFT_STAGGERED=" --enable-mft-staggering " || MFT_STAGGERED=
+
+# ITS vertexing settings
+if [[ $BEAMTYPE == "pp" || $LIGHTNUCLEI == "1" ]]; then
+  ITS_CONFIG_KEY+="ITSVertexerParam.phiCut=0.4;ITSVertexerParam.tanLambdaCut=0.17;ITSVertexerParam.pairCut=0.0317563;ITSVertexerParam.clusterCut=0.6640964;ITSVertexerParam.coarseZWindow=0.2049018;ITSVertexerParam.seedDedupZCut=0.0711793;ITSVertexerParam.refitDedupZCut=0.0680009;ITSVertexerParam.duplicateZCut=0.1582193;ITSVertexerParam.finalSelectionZCut=0.1081465;ITSVertexerParam.duplicateDistance2Cut=0.0117033;ITSVertexerParam.clusterContributorsCut=2;ITSVertexerParam.seedMemberRadiusZ=0;ITSVertexerParam.nSigmaCut=0.032841;ITSVertexerParam.suppressLowMultDebris=0;"
+fi
 
 if [[ $CTFINPUT != 1 ]]; then
   GPU_OUTPUT+=",tpc-triggers"
@@ -126,10 +131,10 @@ if [[ $SYNCMODE == 1 ]]; then
   MFT_STF_DEC_CONFIG+="MFTClustererParam.maxBCDiffToMaskBias=-1;"
   [[ $BEAMTYPE == "PbPb" || $BEAMTYPE == "pp" || $LIGHTNUCLEI == "1" ]] && MFT_CONFIG_KEY+="MFTTracking.cutMultClusLow=0;MFTTracking.cutMultClusHigh=4000;"
   if [[ $BEAMTYPE == "PbPb" ]]; then
-    ITS_CONFIG_KEY+="fastMultConfig.cutMultClusLow=${CUT_MULT_MIN_ITS:-0};fastMultConfig.cutMultClusHigh=${CUT_MULT_MAX_ITS:-400};fastMultConfig.cutMultVtxHigh=${CUT_MULT_VTX_ITS:-20};"
+    ITS_CONFIG_KEY+=";fastMultConfig.cutMultClusLow=${CUT_MULT_MIN_ITS:-0};fastMultConfig.cutMultClusHigh=${CUT_MULT_MAX_ITS:-400};fastMultConfig.cutMultVtxHigh=${CUT_MULT_VTX_ITS:-20};"
     MCH_CONFIG_KEY="MCHTracking.maxCandidates=50000;MCHTracking.maxTrackingDuration=20;"
   elif [[ $BEAMTYPE == "pp" || $LIGHTNUCLEI == "1" ]]; then
-    ITS_CONFIG_KEY+="fastMultConfig.cutMultClusLow=${CUT_MULT_MIN_ITS:--1};fastMultConfig.cutMultClusHigh=${CUT_MULT_MAX_ITS:--1};fastMultConfig.cutMultVtxHigh=${CUT_MULT_VTX_ITS:--1};ITSVertexerParam.phiCut=0.5;ITSVertexerParam.clusterContributorsCut=3;ITSVertexerParam.tanLambdaCut=0.2;"
+    ITS_CONFIG_KEY+=";fastMultConfig.cutMultClusLow=${CUT_MULT_MIN_ITS:--1};fastMultConfig.cutMultClusHigh=${CUT_MULT_MAX_ITS:--1};fastMultConfig.cutMultVtxHigh=${CUT_MULT_VTX_ITS:--1};"
     MCH_CONFIG_KEY="MCHTracking.maxCandidates=20000;MCHTracking.maxTrackingDuration=10;"
   fi
   [[ -n ${CUT_RANDOM_FRACTION_ITS:-} ]] && ITS_CONFIG_KEY+="fastMultConfig.cutRandomFraction=$CUT_RANDOM_FRACTION_ITS;"
@@ -157,11 +162,6 @@ if [[ $SYNCMODE == 1 ]]; then
   has_detector ITS && TRD_FILTER_CONFIG+=" --filter-trigrec"
 else
   has_detectors_gpu TPC ITS && ITS_CONFIG_KEY+="ITSCATrackerParam.trackingMode=1;" # sets ITS gpu reco to async
-  if [[ $BEAMTYPE == "pp" || $LIGHTNUCLEI == "1" ]]; then
-    ITS_CONFIG_KEY+="ITSVertexerParam.phiCut=0.5;ITSVertexerParam.clusterContributorsCut=3;ITSVertexerParam.tanLambdaCut=0.2;"
-  elif [[ $BEAMTYPE == "PbPb" ]]; then
-    ITS_CONFIG_KEY+="ITSVertexerParam.lowMultBeamDistCut=0;"
-  fi
 
   if [[ $IS_SIMULATED_DATA == 0 && $CTFINPUT == 1 ]]; then # Enable fixes to the MCH readout mapping for async processing of real data
     MCH_CONFIG_KEY+="MCHDigitModifier.updateST1=true;MCHDigitModifier.updateST2=true;"
@@ -323,17 +323,18 @@ local IGNOREIDC=1
 local CTPLUMY_DISABLED=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --lumi-type=*) TPC_CORR_OPT+=" --lumi-type ${1#*=}"; [[ ${1#*=} == "2" ]] && { NEED_TPC_SCALERS_WF=1; IGNOREIDC=0; }; shift 1;;
-    --lumi-type) TPC_CORR_OPT+=" --lumi-type ${2}"; [[ ${2} == "2" ]] && { NEED_TPC_SCALERS_WF=1; IGNOREIDC=0; }; shift 2;;
-    --enable-M-shape-correction) TPC_CORR_OPT+=" --enable-M-shape-correction"; NEED_TPC_SCALERS_WF=1; TPC_SCALERS_CONF+=" --enable-M-shape-correction" ; shift 1;;
+    --lumi-type=*) TPC_CORR_OPT+=" --lumi-type ${1#*=}"; [[ ${1#*=} == "2" ]] && { IGNOREIDC=0; }; shift 1;;
+    --lumi-type) TPC_CORR_OPT+=" --lumi-type ${2}"; [[ ${2} == "2" ]] && { IGNOREIDC=0; }; shift 2;;
+    --enable-M-shape-correction) TPC_CORR_OPT+=" --enable-M-shape-correction"; TPC_SCALERS_CONF+=" --enable-M-shape-correction" ; shift 1;;
     --corrmap-lumi-mode=*) TPC_CORR_OPT+=" --corrmap-lumi-mode ${1#*=}"; shift 1;;
     --corrmap-lumi-mode) TPC_CORR_OPT+=" --corrmap-lumi-mode ${2}"; shift 2;;
     --disable-ctp-lumi-request) TPC_CORR_OPT+=" --disable-ctp-lumi-request"; CTPLUMY_DISABLED=1; shift 1;;
     *) TPC_CORR_KEY+="$1;"; shift 1;;
   esac
 done
-[[ ${NEED_TPC_SCALERS_WF:-} == 1 ]] && [[ $IGNOREIDC == 1 ]] && TPC_SCALERS_CONF+=" --disable-IDC-scalers"
+[[ $IGNOREIDC == 1 ]] && TPC_SCALERS_CONF+=" --disable-IDC-scalers"
 ! has_detector CTP && [[ ${CTPLUMY_DISABLED:-} != 1 ]] && TPC_CORR_OPT+=" --disable-ctp-lumi-request"
+TPC_SCALERS_CONF+=" ${TPC_CORR_OPT}"
 }
 
 if has_detector TPC; then
@@ -542,12 +543,6 @@ if [[ -z ${WORKFLOW_DETECTORS_USE_GLOBAL_READER_TRACKS} ]] && [[ -z ${WORKFLOW_D
   [[ -z "$DISABLE_ROOT_OUTPUT" ]] || [[ -n $ROOT_OUTPUT_ASKED ]] && add_W o2-tfidinfo-writer-workflow
 fi
 
-# if TPC correction with IDC from CCDB was requested
-has_detector TPC && [[ ${NEED_TPC_SCALERS_WF:-} == 1 ]] && add_W o2-tpc-scaler-workflow " ${TPC_SCALERS_CONF:-} "
-
-# if ITS+TPC GPU: pass ITS CKVs to the GPU WF
-has_detectors_gpu TPC ITS && GPU_CONFIG_KEY+=$ITS_CONFIG_KEY
-
 # ---------------------------------------------------------------------------------------------------------------------
 # Raw decoder workflows - disabled in async mode
 if [[ $CTFINPUT == 0 && $DIGITINPUT == 0 ]]; then
@@ -577,6 +572,12 @@ if [[ $CTFINPUT == 0 && $DIGITINPUT == 0 ]]; then
   has_detector EMC && ! has_detector_from_global_reader EMC && ! has_detector_flp_processing EMC && add_W o2-emcal-reco-workflow "--input-type raw --output-type cells ${RAW_EMC_SUBSPEC:-} $EMCRAW2C_CONFIG --disable-root-output $DISABLE_MC --pipeline $(get_N EMCALRawToCellConverterSpec EMC REST 1 EMCREC)"
 fi
 
+# if TPC correction with IDC from CCDB was requested
+has_detector TPC && add_W o2-tpc-scaler-workflow " ${TPC_SCALERS_CONF:-} " "$TPC_CORR_KEY"
+
+# if ITS+TPC GPU: pass ITS CKVs to the GPU WF
+has_detectors_gpu TPC ITS && GPU_CONFIG_KEY+=$ITS_CONFIG_KEY
+
 has_detector_gpu ITS && GPU_INPUT+=",its-clusters"
 if [[ $BEAMTYPE != "cosmic" && $SYNCMODE != 1 ]]; then
   has_detector_gpu ITS && GPU_INPUT+=",its-mean-vertex"
@@ -585,14 +586,14 @@ has_detector_gpu ITS && GPU_OUTPUT+=",its-tracks"
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Common reconstruction workflows
-(has_detector_reco ITS && ! has_detector_gpu ITS) && ! has_detector_from_global_reader ITS && add_W o2-its-reco-workflow "--trackerCA $ITS_CONFIG $ITS_STAGGERED $DISABLE_MC ${DISABLE_DIGIT_CLUSTER_INPUT:-} $DISABLE_ROOT_OUTPUT --pipeline $(get_N its-tracker ITS REST 1 ITSTRK),$(get_N its-clusterer ITS REST 1 ITSCL)" "$ITS_CONFIG_KEY;$ITSMFT_STROBES;$ITSEXTRAERR"
+(has_detector_reco ITS && ! has_detector_gpu ITS) && ! has_detector_from_global_reader ITS && add_W o2-its-reco-workflow "$ITS_CONFIG $ITS_STAGGERED $DISABLE_MC ${DISABLE_DIGIT_CLUSTER_INPUT:-} $DISABLE_ROOT_OUTPUT --pipeline $(get_N its-tracker ITS REST 1 ITSTRK),$(get_N its-clusterer ITS REST 1 ITSCL)" "$ITS_CONFIG_KEY;$ITSMFT_STROBES;$ITSEXTRAERR"
 [[ ${DISABLE_DIGIT_CLUSTER_INPUT:-} =~ "--digits-from-upstream" ]]  && has_detector_gpu ITS && ! has_detector_from_global_reader ITS && add_W o2-its-reco-workflow "--disable-tracking ${DISABLE_DIGIT_CLUSTER_INPUT:-} $ITS_STAGGERED $DISABLE_MC $DISABLE_ROOT_OUTPUT --pipeline $(get_N its-clusterer ITS REST 1 ITSCL)" "$ITS_CONFIG_KEY;$ITSMFT_STROBES;$ITSEXTRAERR"
-(has_detector_reco TPC || has_detector_ctf TPC) && ! has_detector_from_global_reader TPC && add_W o2-gpu-reco-workflow "--gpu-reconstruction \"$GPU_CONFIG_SELF\" --input-type=$GPU_INPUT $DISABLE_MC --output-type $GPU_OUTPUT $TPC_CORR_OPT $ITS_STAGGERED --pipeline gpu-reconstruction:${N_TPCTRK:-1},gpu-reconstruction-prepare:${N_TPCTRK:-1} $GPU_CONFIG" "GPU_global.deviceType=$GPUTYPE;GPU_proc.debugLevel=0;$GPU_CONFIG_KEY;$TRACKTUNETPCINNER;$TPC_CORR_KEY"
+(has_detector_reco TPC || has_detector_ctf TPC) && ! has_detector_from_global_reader TPC && add_W o2-gpu-reco-workflow "--gpu-reconstruction \"$GPU_CONFIG_SELF\" --input-type=$GPU_INPUT $DISABLE_MC --output-type $GPU_OUTPUT $([[ $TPC_CORR_OPT == *--disable-ctp-lumi-request* ]] && echo --disable-ctp-lumi-request) $ITS_STAGGERED --pipeline gpu-reconstruction:${N_TPCTRK:-1},gpu-reconstruction-prepare:${N_TPCTRK:-1} $GPU_CONFIG" "GPU_global.deviceType=$GPUTYPE;GPU_proc.debugLevel=0;$GPU_CONFIG_KEY;$TRACKTUNETPCINNER;"
 (has_detector_reco TOF || has_detector_ctf TOF) && ! has_detector_from_global_reader TOF && add_W o2-tof-reco-workflow "$TOF_CONFIG --input-type $TOF_INPUT --output-type $TOF_OUTPUT $DISABLE_DIGIT_ROOT_INPUT $DISABLE_ROOT_OUTPUT $DISABLE_MC --pipeline $(get_N tof-compressed-decoder TOF RAW 1),$(get_N TOFClusterer TOF REST 1)"
 has_detector_reco FT0 && ! has_detector_from_global_reader FT0 && add_W o2-ft0-reco-workflow "$DISABLE_DIGIT_ROOT_INPUT $DISABLE_ROOT_OUTPUT $DISABLE_MC --pipeline $(get_N ft0-reconstructor FT0 REST 1)"
 has_detector_reco TRD && ! has_detector_from_global_reader TRD && add_W o2-trd-tracklet-transformer "--disable-irframe-reader $DISABLE_DIGIT_ROOT_INPUT $DISABLE_ROOT_OUTPUT $DISABLE_MC $TRD_FILTER_CONFIG --pipeline $(get_N TRDTRACKLETTRANSFORMER TRD REST 1 TRDTRKTRANS)"
-has_detectors_reco ITS TPC && ! has_detector_from_global_reader_tracks ITS-TPC && has_detector_matching ITSTPC && add_W o2-tpcits-match-workflow "$DISABLE_ROOT_INPUT $DISABLE_ROOT_OUTPUT $DISABLE_MC $ITS_STAGGERED $SEND_ITSTPC_DTGL  $TPC_CORR_OPT --nthreads $ITSTPC_THREADS --pipeline $(get_N itstpc-track-matcher MATCH REST $ITSTPC_THREADS TPCITS)" "$ITSTPC_CONFIG_KEY;$INTERACTION_TAG_CONFIG_KEY;$ITSMFT_STROBES;$ITSEXTRAERR;$TPC_CORR_KEY"
-has_detector_reco TRD && [[ -n "$TRD_SOURCES" ]] && ! has_detector_from_global_reader_tracks "$(echo "$TRD_SOURCES" | cut -d',' -f1)-TRD" && add_W o2-trd-global-tracking "$DISABLE_ROOT_INPUT $DISABLE_ROOT_OUTPUT $DISABLE_MC $TRD_CONFIG $TRD_FILTER_CONFIG $TPC_CORR_OPT --track-sources $TRD_SOURCES --pipeline $(get_N trd-globaltracking_TPC_ITS-TPC_ TRD REST 1 TRDTRK),$(get_N trd-globaltracking_TPC_FT0_ITS-TPC_ TRD REST 1 TRDTRK),$(get_N trd-globaltracking_TPC_FT0_ITS-TPC_CTP_ TRD REST 1 TRDTRK)" "$TRD_CONFIG_KEY;$INTERACTION_TAG_CONFIG_KEY;$ITSMFT_STROBES;$ITSEXTRAERR;$TPC_CORR_KEY"
+has_detectors_reco ITS TPC && ! has_detector_from_global_reader_tracks ITS-TPC && has_detector_matching ITSTPC && add_W o2-tpcits-match-workflow "$DISABLE_ROOT_INPUT $DISABLE_ROOT_OUTPUT $DISABLE_MC $ITS_STAGGERED $SEND_ITSTPC_DTGL $TPC_CORR_OPT --nthreads $ITSTPC_THREADS --pipeline $(get_N itstpc-track-matcher MATCH REST $ITSTPC_THREADS TPCITS)" "$ITSTPC_CONFIG_KEY;$INTERACTION_TAG_CONFIG_KEY;$ITSMFT_STROBES;$ITSEXTRAERR;$TPC_CORR_KEY;"
+has_detector_reco TRD && [[ -n "$TRD_SOURCES" ]] && ! has_detector_from_global_reader_tracks "$(echo "$TRD_SOURCES" | cut -d',' -f1)-TRD" && add_W o2-trd-global-tracking "$DISABLE_ROOT_INPUT $DISABLE_ROOT_OUTPUT $DISABLE_MC $TRD_CONFIG $TRD_FILTER_CONFIG $TPC_CORR_OPT --track-sources $TRD_SOURCES --pipeline $(get_N trd-globaltracking_TPC_ITS-TPC_ TRD REST 1 TRDTRK),$(get_N trd-globaltracking_TPC_FT0_ITS-TPC_ TRD REST 1 TRDTRK),$(get_N trd-globaltracking_TPC_FT0_ITS-TPC_CTP_ TRD REST 1 TRDTRK)" "$TRD_CONFIG_KEY;$INTERACTION_TAG_CONFIG_KEY;$ITSMFT_STROBES;$ITSEXTRAERR;$TPC_CORR_KEY;"
 has_detector_reco TOF && [[ -n "$TOF_SOURCES" ]] && ! has_detector_from_global_reader_tracks "$(echo "$TOF_SOURCES" | cut -d',' -f1)-TOF" && add_W o2-tof-matcher-workflow "$TOF_MATCH_OPT $DISABLE_ROOT_INPUT $DISABLE_ROOT_OUTPUT $DISABLE_MC $TPC_CORR_OPT ${TOFMATCH_THREADS:+--tof-lanes ${TOFMATCH_THREADS}} --track-sources $TOF_SOURCES --pipeline $(get_N tof-matcher TOF REST 1 TOFMATCH)" "$ITSMFT_STROBES;$ITSEXTRAERR;$TPC_CORR_KEY;$INTERACTION_TAG_CONFIG_KEY"
 has_detectors TPC && [[ -z "$DISABLE_ROOT_OUTPUT" && "${SKIP_TPC_CLUSTERSTRACKS_OUTPUT:-}" != 1 ]] && ! has_detector_from_global_reader TPC && add_W o2-tpc-reco-workflow "--input-type pass-through --output-type clusters,tpc-triggers,tracks,send-clusters-per-sector $DISABLE_MC"
 

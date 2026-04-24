@@ -29,7 +29,7 @@ fi
 
 # include jobutils, which notably brings
 # --> the taskwrapper as a simple control and monitoring tool
-#     (look inside the jobutils.sh file for documentation)
+#     (look inside the jobutils2.sh file for documentation)
 # --> utilities to query CPU count
 . ${O2_ROOT}/share/scripts/jobutils2.sh
 
@@ -188,7 +188,7 @@ taskwrapper digi.log o2-sim-digitizer-workflow -n $NEvents ${DIGIQED} ${NOMCLABE
 touch digiTRD.log_done
 
 if [[ "0$GENERATE_ITSMFT_DICTIONARIES" == "01" ]]; then
-  taskwrapper itsmftdict1.log o2-its-reco-workflow --trackerCA --disable-mc --configKeyValues '"fastMultConfig.cutMultClusLow=30000;fastMultConfig.cutMultClusHigh=2000000;fastMultConfig.cutMultVtxHigh=500;"'
+  taskwrapper itsmftdict1.log o2-its-reco-workflow --disable-mc --configKeyValues '"fastMultConfig.cutMultClusLow=30000;fastMultConfig.cutMultClusHigh=2000000;fastMultConfig.cutMultVtxHigh=500;"'
   cp ~/alice/O2/Detectors/ITSMFT/ITS/macros/test/CreateDictionaries.C .
   taskwrapper itsmftdict2.log root -b -q CreateDictionaries.C++
   rm -f CreateDictionaries_C* CreateDictionaries.C

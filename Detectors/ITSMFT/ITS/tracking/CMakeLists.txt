@@ -16,6 +16,7 @@ o2_add_library(ITStracking
                        src/Configuration.cxx
                        src/FastMultEstConfig.cxx
                        src/FastMultEst.cxx
+                       src/LineVertexerHelpers.cxx
                        src/TimeFrame.cxx
                        src/IOUtils.cxx
                        src/Tracker.cxx
@@ -52,7 +53,6 @@ o2_target_root_dictionary(ITStracking
                                   include/ITStracking/Tracklet.h
                                   include/ITStracking/Cluster.h
                                   include/ITStracking/Definitions.h
-                                  include/ITStracking/FastMultEst.h
                                   include/ITStracking/FastMultEstConfig.h
                                   include/ITStracking/TrackingConfigParam.h
                           LINKDEF src/TrackingLinkDef.h)

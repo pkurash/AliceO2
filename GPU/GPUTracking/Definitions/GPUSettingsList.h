@@ -233,7 +233,7 @@ BeginSubConfig(GPUSettingsProcessingRTCtechnical, rtctech, configStandalone.proc
 AddOption(runTest, int32_t, 0, "", 0, "Do not run the actual benchmark, but just test RTC compilation (1 full test, 2 test only compilation)")
 AddOption(cacheMutex, bool, true, "", 0, "Use a file lock to serialize access to the cache folder")
 AddOption(ignoreCacheValid, bool, false, "", 0, "If set, allows to use RTC cached code files even if they are not valid for the current source code / parameters")
-AddOption(printLaunchBounds, bool, false, "", 0, "Print launch bounds used for RTC code as debugging option")
+AddOption(printLaunchBounds, int32_t, false, "", 0, "Print launch bounds used for RTC code as debugging option, 2 for exit after printing", def(1))
 AddOption(allowOptimizedSlaveReconstruction, bool, false, "", 0, "Allow RTC with slave GPUReconstruction instances with optConstexpr and optSpecialcode")
 AddOption(cacheFolder, std::string, "./rtccache/", "", 0, "Folder in which the cache file is stored")
 AddOption(prependCommand, std::string, "", "", 0, "Prepend RTC compilation commands by this string")
@@ -329,6 +329,7 @@ AddOption(debugLevel, int32_t, -1, "debug", 'd', "Set debug level (-2 = silent, 
 AddOption(allocDebugLevel, int32_t, 0, "allocDebug", 0, "Some debug output for memory allocations (without messing with normal debug level)")
 AddOption(debugMask, uint32_t, (1 << 18) - 1, "debugMask", 0, "Mask for debug output dumps to file")
 AddOption(debugLogSuffix, std::string, "", "debugSuffix", 0, "Suffix for debug log files with --debug 6")
+AddOption(debugFileHexFloat, int32_t, -1, "", 0, "Use hex format to print floats to debug dump file")
 AddOption(debugCSV, std::string, "", "", 0, "CSV filename to append the benchmark results. Verbosity determined by parameter --debug.")
 AddOption(debugMarkdown, bool, false, "", 0, "Print the results of standlaone benchmarks in markdown format")
 AddOption(serializeGPU, int8_t, 0, "", 0, "Synchronize after each kernel call (bit 1) and DMA transfer (bit 2) and identify failures")
@@ -613,7 +614,7 @@ AddOption(inputcontrolmem, uint64_t, 0, "inputMemory", 0, "Use predefined input 
 AddOption(cpuAffinity, int32_t, -1, "", 0, "Pin CPU affinity to this CPU core", min(-1))
 AddOption(fifoScheduler, bool, false, "", 0, "Use FIFO realtime scheduler", message("Setting FIFO scheduler: %s"))
 AddOption(fpe, int8_t, -1, "", 0, "Trap on floating point exceptions (-1 = if no ffast-math)")
-AddOption(flushDenormals, bool, true, "", 0, "Enable FTZ and DAZ (Flush all denormals to zero)")
+AddOption(flushDenormals, int8_t, -1, "", 0, "Enable FTZ and DAZ (Flush all denormals to zero), -1 = enable automatically if not prevented by deterministic mode")
 AddOption(solenoidBzNominalGPU, float, -1e6f, "", 0, "Field strength of solenoid Bz in kGaus")
 AddOption(constBz, bool, false, "", 0, "Force constand Bz")
 AddOption(overrideMaxTimebin, bool, false, "", 0, "Override max time bin setting for continuous data with max time bin in time frame")
@@ -638,6 +639,7 @@ AddOption(runCompression, int32_t, 1, "", 0, "Enable TPC Compression")
 AddOption(runTransformation, int32_t, 1, "", 0, "Enable TPC Transformation")
 AddOption(runRefit, bool, false, "", 0, "Enable final track refit")
 AddOption(setO2Settings, bool, false, "", 0, "Set O2 defaults for output of shared cluster map, referenceX")
+AddOption(recreateTrivialCalibObjects, bool, false, "", 0, "Recreate trivial calibration objects (TPCTransform, dEdxCorrection) from scratch")
 AddHelp("help", 'h')
 AddHelpAll("helpall", 'H')
 AddSubConfig(GPUSettingsRec, rec)
@@ -650,7 +652,7 @@ EndConfig()
 #endif // BeginConfig
 
 //Settings for the O2 workflow
-#if !defined(QCONFIG_PARSER_CXX) && (defined(GPUCA_O2_LIB) || defined(GPUCA_O2_INTERFACE))
+#if !defined(QCONFIG_PARSER_CXX) && !defined(GPUCA_STANDALONE)
 BeginSubConfig(GPUSettingsO2, global, configStandalone, "O2", 0, "O2 workflow settings", global)
 AddOption(solenoidBzNominalGPU, float, -1e6f, "", 0, "Field strength of solenoid Bz in kGaus")
 AddOption(constBz, bool, false, "", 0, "force constant Bz for tests")
@@ -696,7 +698,7 @@ AddOption(zsOnTheFlyDigitsFilter, bool, false, "", 0, "Run on the fly digits fil
 AddOption(dumpBadTFs, int32_t, 0, "", 0, "Number of bad timeframes (with decoding / processing) errors to decode at max")
 AddOption(dumpBadTFMode, int32_t, 0, "", 0, "Type of dump to create: 0 = raw-reader compatible raw file, 1 = buffer-wise dump, 2 = standalone-benchmark compatible dump")
 EndConfig()
-#endif // GPUCA_O2_LIB
+#endif // !GPUCA_STANDALONE
 #endif // !GPUCA_GPUCODE_DEVICE
 
 // Derrived parameters used in GPUParam
