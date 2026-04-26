@@ -57,8 +57,12 @@ class Detector : public o2::base::DetImpl<Detector>
   o2::fd3::Hit* addHit(int trackId, unsigned int detId,
                        const math_utils::Point3D<float>& startPos,
                        const math_utils::Point3D<float>& endPos,
-                       const math_utils::Vector3D<float>& startMom, double startE,
-                       double endTime, double eLoss, int particlePdg);
+                       const math_utils::Vector3D<float>& startMom, 
+		       double startE,
+                       double endTime, 
+		       double eLoss, 
+		       int particlePdg);
+
   //   unsigned int startStatus,
   //   unsigned int endStatus);
 
@@ -86,7 +90,9 @@ class Detector : public o2::base::DetImpl<Detector>
 
   enum EMedia {
     Scintillator,
-    Aluminium
+    Aluminium,
+    MCPGlass,
+    RadiatorOpticalGlass
   };
 
  private:
@@ -96,23 +102,22 @@ class Detector : public o2::base::DetImpl<Detector>
   std::vector<o2::fd3::Hit>* mHits = nullptr;
   GeometryTGeo* mGeometryTGeo = nullptr;
 
-  TGeoVolumeAssembly* buildModuleA();
-  TGeoVolumeAssembly* buildModuleC();
+  TGeoVolumeAssembly* buildModuleScintA();
+  TGeoVolumeAssembly* buildModuleScintC();
 
-  TGeoVolumeAssembly* buildModuleA_extra();
-  TGeoVolumeAssembly* buildModuleC_extra();
+  TGeoVolumeAssembly* buildModuleCherA();
+  TGeoVolumeAssembly* buildModuleCherC();
 
-  float ringSize(float zmod, float eta);
+  float getRingSize(float zmod, float eta);
 
-  bool mExtra;
-  unsigned int mNumberOfRings, mNumberOfRings_extra, mNumberOfSectors;
-  float mDzScint;
+  unsigned int mNumberOfRingsScint, mNumberOfRingsCher, mNumberOfSectors;
+  float mDzScint, mDzCher;
 
-  std::vector<float> mRingSizes = {}, mRingSizes_extra = {};
+  std::vector<float> mRingSizesScint = {}, mRingSizesCher = {};
 
-  float mEtaMax, mEtaMin;
-  float  mEtaMax_extra, mEtaMin_extra;
-  float mZAC, mZAC_extra;
+  float mEtaMinScint, mEtaMaxScint ;
+  float  mEtaMaxCher, mEtaMinCher;
+  float mZScint, mZCher;
 
   void defineSensitiveVolumes();
   void definePassiveVolumes();

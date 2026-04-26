@@ -15,6 +15,7 @@ o2_add_library(FD3Workflow
                PUBLIC_LINK_LIBRARIES O2::DataFormatsFD3
                                      O2::DetectorsCommonDataFormats
                                      O2::Framework
+				     O2::DetectorsRaw
                                      O2::DPLUtils
                                      O2::CommonUtils)
 

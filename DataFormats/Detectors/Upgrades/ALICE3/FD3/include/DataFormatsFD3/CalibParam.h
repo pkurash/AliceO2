@@ -24,7 +24,7 @@ namespace fd3
 {
 
 struct CalibParam : o2::conf::ConfigurableParamHelper<CalibParam> {
-  static constexpr int Nchannels =  2 * Constants::nsect * (Constants::nrings + Constants::nrings_extra);
+  static constexpr int Nchannels =  2 * Constants::nsect * (Constants::nringsScint + Constants::nringsCher);
   // Logic for obtaining bad channels and for making decision concerning slot finalization
   std::size_t mMinEntriesThreshold = 500;  // Min number of entries
   std::size_t mMaxEntriesThreshold = 1000; // Max number of entries

@@ -20,11 +20,11 @@ namespace o2
 namespace fd3
 {
 struct DigitizationConstants {
-  static constexpr int NCELLSA =  2 * Constants::nrings * Constants::nsect;      // number of scintillator cells side A
-  static constexpr int NCELLSC = 2 * Constants::nrings * Constants::nsect;      // number of scintillator cells side C
+  static constexpr int NCELLSA =  2 * Constants::nringsScint * Constants::nsect;      // number of scintillator cells side A
+  static constexpr int NCELLSC = 2 * Constants::nringsScint * Constants::nsect;      // number of scintillator cells side C
   static constexpr int NCELLSTOT = NCELLSA + NCELLSC;                        // total number of scintillator cells
-  static constexpr int NCELLSA_extra =  2 * Constants::nrings_extra * Constants::nsect;      // number of scintillator cells side A
-  static constexpr int NCELLSC_extra = 2 * Constants::nrings_extra * Constants::nsect;      // number of scintillator cells side C
+  static constexpr int NCELLSA_extra =  2 * Constants::nringsCher * Constants::nsect;      // number of scintillator cells side A
+  static constexpr int NCELLSC_extra = 2 * Constants::nringsCher * Constants::nsect;      // number of scintillator cells side C
   static constexpr int NCELLSTOT_extra = NCELLSTOT + NCELLSA_extra + NCELLSC_extra;                        // total number of scintillator cells
   static constexpr float INV_CHARGE_PER_ADC = 1. / 0.6e-12;                  // charge conversion
   static constexpr float TIME_PER_TDCCHANNEL = 0.01302;                      // time conversion from TDC channels to ns

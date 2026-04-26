@@ -23,14 +23,25 @@ namespace fd3
 {
 struct Constants {
   static constexpr unsigned int nsect = 8;
-  static constexpr unsigned int nrings = 5;
-  static constexpr unsigned int nrings_extra = 5;
+  static constexpr unsigned int nringsScint = 5;
+  static constexpr unsigned int nringsCher = 5;
 
-  static constexpr float etaMax = 7.0f;
-  static constexpr float etaMin = 4.0f;
-  
-  static constexpr float etaMax_extra = 4.0f;
-  static constexpr float etaMin_extra = 2.0f;
+  static constexpr float etaMin_scint_v1 = 2.0f;
+  static constexpr float etaMax_scint_v1 = 4.0f;
+  static constexpr float etaMin_cher_v1 = 3.0f;
+  static constexpr float etaMax_cher_v1 = 4.0f;
+
+
+  static constexpr float etaMin_scint_v2 = 4.0f;
+  static constexpr float etaMax_scint_v2 = 7.0f;
+  static constexpr float etaMin_cher_v2 = 5.0f;
+  static constexpr float etaMax_cher_v2 = 7.0f;
+
+  static constexpr float etaMin_scint_v3 = 2.0f;
+  static constexpr float etaMax_scint_v3 = 5.0f;
+  static constexpr float etaMin_cher_v3 = 5.0f;
+  static constexpr float etaMax_cher_v3 = 7.0f;
+
 };
 
 } // namespace fd3
