@@ -59,19 +59,43 @@ Detector::Detector(bool active)
   mNumberOfRingsScint = Constants::nringsScint;
   mNumberOfRingsCher = Constants::nringsCher;
   mNumberOfSectors = Constants::nsect;
-
-  mEtaMinScint = Constants::etaMin_scint_v1;
-  mEtaMaxScint = Constants::etaMax_scint_v1;
-  mEtaMinCher = Constants::etaMin_cher_v1;
-  mEtaMaxCher = Constants::etaMax_cher_v1;
+  mDzScint = Constants::dzscint / 2;
+  mDzCher  = Constants::dzcher / 2;
 
   auto& baseParam = FD3BaseParam::Instance();
 
-  mDzScint = baseParam.dzscint / 2;
-  mDzCher  = baseParam.dzcher / 2;
-
-  mZScint = baseParam.zscint_v1;
-  mZCher =  baseParam.zcher_v1;
+  switch (baseParam.geoVersion) {
+    case 1:
+      mEtaMinScint = Constants::etaMin_scint_v1;
+      mEtaMinCher = Constants::etaMin_cher_v1;
+      mEtaMaxScint = Constants::etaMax_scint_v1;
+      mEtaMaxCher = Constants::etaMax_cher_v1;
+      mZScint = Constants::zscint_v1;
+      mZCher = Constants::zcher_v1;
+      mTopVolumeNameScint = "barrel";
+      mTopVolumeNameCher = "barrel";
+      break;
+    case 2:
+      mEtaMinScint = Constants::etaMin_scint_v2;
+      mEtaMinCher = Constants::etaMin_cher_v2;
+      mEtaMaxScint = Constants::etaMax_scint_v2;
+      mEtaMaxCher = Constants::etaMax_cher_v2;
+      mZScint = Constants::zscint_v2;
+      mZCher = Constants::zcher_v2;
+      mTopVolumeNameScint = "cave";
+      mTopVolumeNameCher = "cave";
+      break;
+    case 3:
+      mEtaMinScint = Constants::etaMin_scint_v3;
+      mEtaMinCher = Constants::etaMin_cher_v3;
+      mEtaMaxScint = Constants::etaMax_scint_v3;
+      mEtaMaxCher = Constants::etaMax_cher_v3;
+      mZScint = Constants::zscint_v3;
+      mZCher = Constants::zcher_v3;
+      mTopVolumeNameScint = "barrel";
+      mTopVolumeNameCher = "cave";
+      break;
+  }
 
   for (int i = 0; i <= mNumberOfRingsScint + 1; i++) {
     float eta = mEtaMaxScint - i * (mEtaMaxScint - mEtaMinScint) / mNumberOfRingsScint;
@@ -292,10 +316,8 @@ void Detector::buildModules()
 {
   LOGP(info, "Creating FD3 geometry");
 
-  TGeoVolume* topVolScint, *topVolCher;
-	  
-  topVolScint = gGeoManager->GetVolume("barrel");
-  topVolCher = gGeoManager->GetVolume("barrel");
+  auto topVolScint = (TGeoVolume*)gGeoManager->GetVolume(mTopVolumeNameScint);
+  auto topVolCher = (TGeoVolume*)gGeoManager->GetVolume(mTopVolumeNameCher);
 
   if (!topVolScint) {
     LOG(fatal) << "Could not find the top volume!";

@@ -22,31 +22,29 @@ namespace o2
 namespace fd3
 {
 
-//enum FD3GeoVersion = {
-//   v1 = 0, 
-//   v2, 
-//   v3
-//};
+
 
 struct FD3BaseParam : public o2::conf::ConfigurableParamHelper<FD3BaseParam> {
 
 //  float zmodAC = 1500.0f;
 //  float zmodAC_extra = 400.0f;
 
-  float dzscint = 4.0f;
-  float dzcher  = 4.0f;
+//  float dzscint = 4.0f;
+//  float dzcher  = 4.0f;
 
-  bool modules_extra = false; // switch for modules at z = +-4 m
-  
-  //int geoVersion = FD3GeoVersion::v1;
+//  float zscint_v1 = 370.0f;
+//  float zscint_v2 = 1500.0f;
+//  float zscint_v3 = 370.0f;
 
-  float zscint_v1 = 370.0f;
-  float zscint_v2 = 1500.0f;
-  float zscint_v3 = 370.0f;
+// float zcher_v1 = 430.0f;
+//  float zcher_v2 = 1560.0f;
+//  float zcher_v3 = 1560.0f;
 
-  float zcher_v1 = 430.0f;
-  float zcher_v2 = 1560.0f;
-  float zcher_v3 = 1560.0f;
+//  enum FD3GeoVersion {
+//    v1 = 1, v2, v3
+//  };
+//  enum FD3GeoVersion geoVersion = v1;
+  unsigned int geoVersion = 1; // 1, 2 or 3;
 
   O2ParamDef(FD3BaseParam, "FD3Base");
 };

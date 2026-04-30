@@ -26,21 +26,29 @@ struct Constants {
   static constexpr unsigned int nringsScint = 5;
   static constexpr unsigned int nringsCher = 5;
 
+  static constexpr  float dzscint = 4.0f;
+  static constexpr  float dzcher = 4.0f;
+
   static constexpr float etaMin_scint_v1 = 2.0f;
   static constexpr float etaMax_scint_v1 = 4.0f;
   static constexpr float etaMin_cher_v1 = 3.0f;
   static constexpr float etaMax_cher_v1 = 4.0f;
-
+  static constexpr float zscint_v1 = 370.0f;
+  static constexpr float zcher_v1 = 430.0f;
 
   static constexpr float etaMin_scint_v2 = 4.0f;
   static constexpr float etaMax_scint_v2 = 7.0f;
   static constexpr float etaMin_cher_v2 = 5.0f;
   static constexpr float etaMax_cher_v2 = 7.0f;
+  static constexpr float zscint_v2 = 1500.0f;
+  static constexpr float zcher_v2 = 1560.0f;
 
   static constexpr float etaMin_scint_v3 = 2.0f;
   static constexpr float etaMax_scint_v3 = 5.0f;
   static constexpr float etaMin_cher_v3 = 5.0f;
   static constexpr float etaMax_cher_v3 = 7.0f;
+  static constexpr float zscint_v3 = 370.0f;
+  static constexpr float zcher_v3 = 1560.0f;
 
 };
 

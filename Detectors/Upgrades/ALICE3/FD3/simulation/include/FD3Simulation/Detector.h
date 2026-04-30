@@ -66,8 +66,7 @@ class Detector : public o2::base::DetImpl<Detector>
   //   unsigned int startStatus,
   //   unsigned int endStatus);
 
-  std::vector<o2::fd3::Hit>* getHits(Int_t iColl)
-  {
+  std::vector<o2::fd3::Hit>* getHits(Int_t iColl) {
     if (iColl == 0) {
       return mHits;
     }
@@ -118,6 +117,7 @@ class Detector : public o2::base::DetImpl<Detector>
   float mEtaMinScint, mEtaMaxScint ;
   float  mEtaMaxCher, mEtaMinCher;
   float mZScint, mZCher;
+  char * mTopVolumeNameScint, *mTopVolumeNameCher;
 
   void defineSensitiveVolumes();
   void definePassiveVolumes();
