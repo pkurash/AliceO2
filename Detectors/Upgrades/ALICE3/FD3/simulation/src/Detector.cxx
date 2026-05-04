@@ -66,48 +66,61 @@ Detector::Detector(bool active)
 
   switch (baseParam.geoVersion) {
     case 1:
-      mEtaMinScint = Constants::etaMin_scint_v1;
-      mEtaMinCher = Constants::etaMin_cher_v1;
-      mEtaMaxScint = Constants::etaMax_scint_v1;
-      mEtaMaxCher = Constants::etaMax_cher_v1;
-      mZScint = Constants::zscint_v1;
-      mZCher = Constants::zcher_v1;
+      mEtaMinScintA = Constants::etaMin_scintA_v1;
+      mEtaMinScintC = Constants::etaMin_scintC_v1;
+      mEtaMinCherA = Constants::etaMin_cherA_v1;
+      mEtaMinCherC = Constants::etaMin_cherC_v1;
+      mEtaMaxScintA = Constants::etaMax_scintA_v1;
+      mEtaMaxScintC = Constants::etaMax_scintC_v1;
+      mEtaMaxCherA = Constants::etaMax_cherA_v1;
+      mEtaMaxCherC = Constants::etaMax_cherC_v1;
+      mZScintA = Constants::zscintA_v1;
+      mZCherA = Constants::zcherA_v1;
+      mZScintC = Constants::zscintC_v1;
+      mZCherC = Constants::zcherC_v1;
+      mYScint =  30.f;
+      mYCher  =  30.f;
       mTopVolumeNameScint = "barrel";
       mTopVolumeNameCher = "barrel";
       break;
     case 2:
-      mEtaMinScint = Constants::etaMin_scint_v2;
-      mEtaMinCher = Constants::etaMin_cher_v2;
-      mEtaMaxScint = Constants::etaMax_scint_v2;
-      mEtaMaxCher = Constants::etaMax_cher_v2;
-      mZScint = Constants::zscint_v2;
-      mZCher = Constants::zcher_v2;
+      mEtaMinScintA = Constants::etaMin_scint_v2;
+      mEtaMinScintC = Constants::etaMin_scint_v2;
+      mEtaMinCherA = Constants::etaMin_cher_v2;
+      mEtaMinCherC = Constants::etaMin_cher_v2;
+      mEtaMaxScintA = Constants::etaMax_scint_v2;
+      mEtaMaxScintC = Constants::etaMax_scint_v2;
+      mEtaMaxCherA = Constants::etaMax_cher_v2;
+      mEtaMaxCherC = Constants::etaMax_cher_v2;
+      mZScintA = Constants::zscint_v2;
+      mZCherA = Constants::zcher_v2;
+      mZScintC = -mZScintA;
+      mZCherC = - mZCherC;
+      mYScint =  0.f;
+      mYCher  =  0.f;
       mTopVolumeNameScint = "cave";
       mTopVolumeNameCher = "cave";
       break;
     case 3:
-      mEtaMinScint = Constants::etaMin_scint_v3;
-      mEtaMinCher = Constants::etaMin_cher_v3;
-      mEtaMaxScint = Constants::etaMax_scint_v3;
-      mEtaMaxCher = Constants::etaMax_cher_v3;
-      mZScint = Constants::zscint_v3;
-      mZCher = Constants::zcher_v3;
+      mEtaMinScintA = Constants::etaMin_scintA_v1;
+      mEtaMinScintC = Constants::etaMin_scintC_v1;
+      mEtaMinCherA = Constants::etaMin_cher_v2;
+      mEtaMinCherC = Constants::etaMin_cher_v2;
+      mEtaMaxScintA = Constants::etaMax_scintA_v1;
+      mEtaMaxScintC = Constants::etaMax_scintC_v1;
+      mEtaMaxCherA = Constants::etaMax_cher_v2;
+      mEtaMaxCherC = Constants::etaMax_cher_v2;
+      mZScintA = Constants::zscintA_v1;
+      mZScintC = Constants::zscintC_v1;
+      mZCherA = Constants::zcher_v2;
+      mZCherC = - mZCherA;
+      mYScint =  30.f;
+      mYCher  =  0.f;
       mTopVolumeNameScint = "barrel";
       mTopVolumeNameCher = "cave";
       break;
   }
 
-  for (int i = 0; i <= mNumberOfRingsScint + 1; i++) {
-    float eta = mEtaMaxScint - i * (mEtaMaxScint - mEtaMinScint) / mNumberOfRingsScint;
-    float r = getRingSize(mZScint, eta);
-    mRingSizesScint.emplace_back(r);
-  }
-
-  for (int i = 0; i <= mNumberOfRingsCher + 1; i++) {
-    float eta = mEtaMaxCher - i * (mEtaMaxCher - mEtaMinCher) / mNumberOfRingsCher;
-    float r = getRingSize(mZCher, eta);
-    mRingSizesCher.emplace_back(r);
-  }
 }
 
 Detector::Detector(const Detector& rhs)
@@ -269,12 +282,12 @@ void Detector::createMaterials()
 
   int fieldType;
   float maxField;
-  o2::base::Detector::initFieldTrackingParams(fieldType, maxField);
-  LOG(info) << "FV0: createMaterials(): fieldType " << fieldType << ", maxField " << maxField;
-
   // TODO: Comment out two lines below once tested that the above function assigns field type and max correctly
   fieldType = 3;            // Field type
   maxField = 5.0;           // Field max.
+ // o2::base::Detector::initFieldTrackingParams(fieldType, maxField);
+  LOG(info) << "FV0: createMaterials(): fieldType " << fieldType << ", maxField " << maxField;
+
 
   float tmaxfd3 = -10.0; // max deflection angle due to magnetic field in one step
   float stepmax = 0.1;    // max step allowed [cm]
@@ -292,8 +305,8 @@ void Detector::createMaterials()
   o2::base::Detector::Medium(Aluminium, "Aluminium", matId, unsens, fieldType, maxField,
                              tmaxfd3, stepmax, deemax, epsil, stepmin);
 
-  // Cherenkov part
-  fieldType  = 2;     // magneticField->Integ();
+  // Cherenkov radiator
+   fieldType  = 2;     // magneticField->Integ();
    maxField = 10.; // magneticField->Max();
 
   // Radiator  glass SiO2
@@ -331,11 +344,11 @@ void Detector::buildModules()
   TGeoVolumeAssembly* vFD3_CherA = buildModuleCherA();
   TGeoVolumeAssembly* vFD3_CherC = buildModuleCherC();
 
-  topVolScint->AddNode(vFD3_ScintA, 1, new TGeoTranslation(0., 0., mZScint));
-  topVolScint->AddNode(vFD3_ScintC, 2, new TGeoTranslation(0., 0., -mZScint));
+  topVolScint->AddNode(vFD3_ScintA, 1, new TGeoTranslation(0., mYScint, mZScintA));
+  topVolScint->AddNode(vFD3_ScintC, 2, new TGeoTranslation(0., mYScint, mZScintC));
 
-  topVolCher->AddNode(vFD3_CherA, 1, new TGeoTranslation(0., 0., mZCher));
-  topVolCher->AddNode(vFD3_CherC, 2, new TGeoTranslation(0., 0., -mZCher));
+  topVolCher->AddNode(vFD3_CherA, 1, new TGeoTranslation(0., mYCher, mZCherA));
+  topVolCher->AddNode(vFD3_CherC, 2, new TGeoTranslation(0., mYCher, mZCherC));
 }
 
 TGeoVolumeAssembly* Detector::buildModuleScintA()
@@ -349,8 +362,10 @@ TGeoVolumeAssembly* Detector::buildModuleScintA()
   for (int ir = 0; ir < mNumberOfRingsScint; ir++) {
     std::string rName = "fd3_ring" + std::to_string(ir + 1);
     TGeoVolumeAssembly* ring = new TGeoVolumeAssembly(rName.c_str());
-    float rmin = mRingSizesScint[ir];
-    float rmax = mRingSizesScint[ir + 1];
+    float etaMin = mEtaMaxScintA - (ir + 1) * (mEtaMaxScintA - mEtaMinScintA) / mNumberOfRingsScint;
+    float etaMax = mEtaMaxScintA - ir * (mEtaMaxScintA - mEtaMinScintA) / mNumberOfRingsScint;
+    float zmod = mZScintA;
+    float rmin = getRingSize(zmod, etaMax), rmax = getRingSize(zmod, etaMin);
     LOG(info) << "Scintillator ring" << ir << ": from " << rmin << " to " << rmax;
     for (int ic = 0; ic < mNumberOfSectors; ic++) {
       int cellId = ic + mNumberOfSectors * ir;
@@ -366,7 +381,7 @@ TGeoVolumeAssembly* Detector::buildModuleScintA()
       }
       ring->AddNode(nod, cellId);
     }
-    mod->AddNode(ring, ir + 1);
+    mod->AddNode(ring, 1);
   }
 
   return mod;
@@ -383,8 +398,10 @@ TGeoVolumeAssembly* Detector::buildModuleScintC()
   for (int ir = 0; ir < mNumberOfRingsScint; ir++) {
     std::string rName = "fd3_ring" + std::to_string(ir + 1 + mNumberOfRingsScint);
     TGeoVolumeAssembly* ring = new TGeoVolumeAssembly(rName.c_str());
-    float rmin = mRingSizesScint[ir];
-    float rmax = mRingSizesScint[ir + 1];
+    float etaMin = mEtaMinScintC + ir * (mEtaMaxScintC - mEtaMinScintC) / mNumberOfRingsScint;
+    float etaMax = mEtaMinScintC + (ir + 1) * (mEtaMaxScintC - mEtaMinScintC) / mNumberOfRingsScint;
+    float zmod = mZScintC;
+    float rmin = getRingSize(zmod, etaMin), rmax = getRingSize(zmod, etaMax);
     LOG(info) << "Scintillator ring" << ir + mNumberOfRingsScint << ": from " << rmin << " to " << rmax;
     for (int ic = 0; ic < mNumberOfSectors; ic++) {
       int cellId = ic + mNumberOfSectors * (ir + mNumberOfRingsScint);
@@ -400,7 +417,7 @@ TGeoVolumeAssembly* Detector::buildModuleScintC()
       }
       ring->AddNode(nod, cellId);
     }
-    mod->AddNode(ring, ir + 1);
+    mod->AddNode(ring, 1);
   }
 
   return mod;
@@ -412,16 +429,18 @@ TGeoVolumeAssembly* Detector::buildModuleCherA()
 
   const TGeoMedium* medium = gGeoManager->GetMedium("FD3_Glass");
 
-  float dphiDeg = 360. / mNumberOfSectors;
+  float dphiDeg = 360.;// / mNumberOfSectors;
 
   for (int ir = 0; ir < mNumberOfRingsCher; ir++) {
     std::string rName = "fd3_ring" + std::to_string(ir + 1 + 2 * mNumberOfRingsScint);
     TGeoVolumeAssembly* ring = new TGeoVolumeAssembly(rName.c_str());
-    float rmin = mRingSizesCher[ir];
-    float rmax = mRingSizesCher[ir + 1];
+    float etaMin = mEtaMaxCherA - (ir + 1) * (mEtaMaxCherA - mEtaMinCherA) / mNumberOfRingsCher;
+    float etaMax = mEtaMaxCherA - ir * (mEtaMaxCherA - mEtaMinCherA) / mNumberOfRingsCher;
+    float zmod = mZCherA;
+    float rmin = getRingSize(zmod, etaMax), rmax = getRingSize(zmod, etaMin);
     LOG(info) << "Radiator ring" << ir << ": from " << rmin << " to " << rmax;
     for (int ic = 0; ic < mNumberOfSectors; ic++) {
-      int cellId = ic + mNumberOfSectors * (ir + 2 * mNumberOfRingsCher);
+      int cellId = ic + mNumberOfSectors * (ir + 2 * mNumberOfRingsScint);
       std::string nodeName = "fd3_node" + std::to_string(cellId);
       float phimin = dphiDeg * ic;
       float phimax = dphiDeg * (ic + 1);
@@ -434,7 +453,7 @@ TGeoVolumeAssembly* Detector::buildModuleCherA()
       }
       ring->AddNode(nod, cellId);
     }
-    mod->AddNode(ring, ir + 1);
+    mod->AddNode(ring, 1);
   }
 
   return mod;
@@ -446,13 +465,15 @@ TGeoVolumeAssembly* Detector::buildModuleCherC()
 
   const TGeoMedium* medium = gGeoManager->GetMedium("FD3_Glass");
 
-  float dphiDeg = 360. / mNumberOfSectors;
+  float dphiDeg = 360.;// / mNumberOfSectors;
 
   for (int ir = 0; ir < mNumberOfRingsCher; ir++) {
     std::string rName = "fd3_ring" + std::to_string(ir + 1 + 2 * mNumberOfRingsScint + mNumberOfRingsCher);
     TGeoVolumeAssembly* ring = new TGeoVolumeAssembly(rName.c_str());
-    float rmin = mRingSizesCher[ir];
-    float rmax = mRingSizesCher[ir + 1];
+    float etaMin = mEtaMinCherC + ir * (mEtaMaxCherC - mEtaMinCherC) / mNumberOfRingsCher;
+    float etaMax = mEtaMinCherC + (ir + 1) * (mEtaMaxCherC - mEtaMinCherC) / mNumberOfRingsCher;
+    float zmod = mZCherC;
+    float rmin = getRingSize(zmod, etaMin), rmax = getRingSize(zmod, etaMax);
     LOG(info) << "Radiator ring" << ir + mNumberOfRingsCher << ": from " << rmin << " to " << rmax;
     for (int ic = 0; ic < mNumberOfSectors; ic++) {
       int cellId = ic + mNumberOfSectors * (ir + 2* mNumberOfRingsScint + mNumberOfRingsCher);
@@ -468,7 +489,7 @@ TGeoVolumeAssembly* Detector::buildModuleCherC()
       }
       ring->AddNode(nod, cellId);
     }
-    mod->AddNode(ring, ir + 1);
+    mod->AddNode(ring, 1);
   }
 
   return mod;

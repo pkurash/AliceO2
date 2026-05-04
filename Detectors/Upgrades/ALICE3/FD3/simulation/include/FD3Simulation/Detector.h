@@ -112,12 +112,11 @@ class Detector : public o2::base::DetImpl<Detector>
   unsigned int mNumberOfRingsScint, mNumberOfRingsCher, mNumberOfSectors;
   float mDzScint, mDzCher;
 
-  std::vector<float> mRingSizesScint = {}, mRingSizesCher = {};
-
-  float mEtaMinScint, mEtaMaxScint ;
-  float  mEtaMaxCher, mEtaMinCher;
-  float mZScint, mZCher;
-  char * mTopVolumeNameScint, *mTopVolumeNameCher;
+  float mEtaMinScintA, mEtaMaxScintA, mEtaMinScintC, mEtaMaxScintC;
+  float mEtaMaxCherA, mEtaMinCherA, mEtaMaxCherC, mEtaMinCherC;
+  float mZScintA, mZScintC, mZCherA, mZCherC;
+  float mYScint, mYCher;
+  TString mTopVolumeNameScint, mTopVolumeNameCher;
 
   void defineSensitiveVolumes();
   void definePassiveVolumes();
