@@ -124,6 +124,15 @@ uint32_t decodeVarintLocal(const uint8_t*& data, const uint8_t* end)
 ///   ceil(totalBits/8) bytes: MSB-first bitstream
 void huffmanEncode(const std::vector<uint32_t>& symbols, std::vector<uint8_t>& buf)
 {
+  if (symbols.empty()) {
+    // Write a valid empty Huffman stream: numSymbols=0, totalBits=0.
+    // The decoder handles this correctly (returns an empty symbol vector).
+    for (int i = 0; i < 12; ++i) {
+      buf.push_back(0);
+    }
+    return;
+  }
+
   // Frequency count
   std::map<uint32_t, uint64_t> freq;
   for (const uint32_t z : symbols) {
@@ -438,7 +447,7 @@ CMVPerTFCompressed CMVPerTF::compress(uint8_t flags) const
 {
   CMVPerTFCompressed out;
   out.firstOrbit = firstOrbit;
-  out.firstBC = firstBC;
+  out.firstOrbitDPL = firstOrbitDPL;
   out.mFlags = flags;
 
   if (flags & CMVEncoding::kSparse) {
@@ -661,7 +670,7 @@ void CMVPerTFCompressed::decompress(CMVPerTF* cmv) const
     throw std::invalid_argument("CMVPerTFCompressed::decompress: cmv pointer is null");
   }
   cmv->firstOrbit = firstOrbit;
-  cmv->firstBC = firstBC;
+  cmv->firstOrbitDPL = firstOrbitDPL;
   std::fill(std::begin(cmv->mDataPerTF), std::end(cmv->mDataPerTF), uint16_t(0));
 
   const uint8_t* ptr = mData.data();

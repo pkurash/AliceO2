@@ -114,7 +114,7 @@ void TrackerTraits<NLayers>::computeLayerTracklets(const int iteration, int iVer
           const auto bins = o2::its::getBinsRect(currentCluster, iLayer + 1, zAtRmin, zAtRmax,
                                                  sigmaZ * mTrkParams[iteration].NSigmaCut, mTimeFrame->getPhiCut(iLayer),
                                                  mTimeFrame->getIndexTableUtils());
-          if (bins.x == 0 && bins.y == 0 && bins.z == 0 && bins.w == 0) {
+          if (bins.x < 0) {
             continue;
           }
           int phiBinsNum = bins.w - bins.y + 1;
@@ -150,11 +150,10 @@ void TrackerTraits<NLayers>::computeLayerTracklets(const int iteration, int iVer
                 if (mTimeFrame->isClusterUsed(iLayer + 1, nextCluster.clusterId)) {
                   continue;
                 }
-                const float deltaPhi = o2::gpu::CAMath::Abs(o2::math_utils::toPMPi(currentCluster.phi - nextCluster.phi));
                 const float deltaZ = o2::gpu::CAMath::Abs((tanLambda * (nextCluster.radius - currentCluster.radius)) + currentCluster.zCoordinate - nextCluster.zCoordinate);
 
                 if (deltaZ / sigmaZ < mTrkParams[iteration].NSigmaCut &&
-                    ((deltaPhi < mTimeFrame->getPhiCut(iLayer) || o2::gpu::GPUCommonMath::Abs(deltaPhi - o2::constants::math::TwoPI) < mTimeFrame->getPhiCut(iLayer)))) {
+                    math_utils::isPhiDifferenceBelow(currentCluster.phi, nextCluster.phi, mTimeFrame->getPhiCut(iLayer))) {
                   const float phi{o2::gpu::CAMath::ATan2(currentCluster.yCoordinate - nextCluster.yCoordinate, currentCluster.xCoordinate - nextCluster.xCoordinate)};
                   const float tanL = (currentCluster.zCoordinate - nextCluster.zCoordinate) / (currentCluster.radius - nextCluster.radius);
                   if constexpr (decltype(Tag)::value == PassMode::OnePass::value) {
@@ -207,19 +206,11 @@ void TrackerTraits<NLayers>::computeLayerTracklets(const int iteration, int iVer
     }
 
     tbb::parallel_for(0, mTrkParams[iteration].TrackletsPerRoad(), [&](const int iLayer) {
-      /// Sort tracklets
+      /// Sort tracklets & remove duplicates
+      // duplicates can exist simply since we evaluate per vertex
       auto& trkl{mTimeFrame->getTracklets()[iLayer]};
-      std::sort(trkl.begin(), trkl.end(), [](const Tracklet& a, const Tracklet& b) -> bool {
-        if (a.firstClusterIndex != b.firstClusterIndex) {
-          return a.firstClusterIndex < b.firstClusterIndex;
-        }
-        return a.secondClusterIndex < b.secondClusterIndex;
-      });
-      /// Remove duplicates
-      trkl.erase(std::unique(trkl.begin(), trkl.end(), [](const Tracklet& a, const Tracklet& b) -> bool {
-                   return a.firstClusterIndex == b.firstClusterIndex && a.secondClusterIndex == b.secondClusterIndex;
-                 }),
-                 trkl.end());
+      std::sort(trkl.begin(), trkl.end());
+      trkl.erase(std::unique(trkl.begin(), trkl.end()), trkl.end());
       trkl.shrink_to_fit();
       if (iLayer > 0) { /// recalculate lut
         auto& lut{mTimeFrame->getTrackletsLookupTable()[iLayer - 1]};
@@ -810,30 +801,40 @@ void TrackerTraits<NLayers>::acceptTracks(int iteration, bounded_vector<TrackITS
       continue;
     }
 
-    bool firstCls{true};
-    TimeEstBC ts;
+    bool firstCls{true}, nominalCompatible{true};
+    TimeEstBC nominalTS, expandedTS;
     for (int iLayer{0}; iLayer < mTrkParams[iteration].NLayers; ++iLayer) {
       if (track.getClusterIndex(iLayer) == constants::UnusedIndex) {
         continue;
       }
       mTimeFrame->markUsedCluster(iLayer, track.getClusterIndex(iLayer));
       int currentROF = mTimeFrame->getClusterROF(iLayer, track.getClusterIndex(iLayer));
-      auto rofTS = mTimeFrame->getROFOverlapTableView().getLayer(iLayer).getROFTimeBounds(currentROF, true);
+      const auto nominalROFTS = mTimeFrame->getROFOverlapTableView().getLayer(iLayer).getROFTimeBounds(currentROF);
+      const auto expandedROFTS = mTimeFrame->getROFOverlapTableView().getLayer(iLayer).getROFTimeBounds(currentROF, true);
       if (firstCls) {
         firstCls = false;
-        ts = rofTS;
+        nominalTS = nominalROFTS;
+        expandedTS = expandedROFTS;
       } else {
-        if (!ts.isCompatible(rofTS)) {
-          LOGP(fatal, "TS {}+/-{} are incompatible with {}+/-{}, this should not happen!", rofTS.getTimeStamp(), rofTS.getTimeStampError(), ts.getTimeStamp(), ts.getTimeStampError());
+        if (nominalCompatible) {
+          if (nominalTS.isCompatible(nominalROFTS)) {
+            nominalTS += nominalROFTS;
+          } else {
+            nominalCompatible = false;
+          }
         }
-        ts += rofTS;
+        if (!expandedTS.isCompatible(expandedROFTS)) {
+          LOGP(fatal, "TS {}+/-{} are incompatible with {}+/-{}, this should not happen!", expandedROFTS.getTimeStamp(), expandedROFTS.getTimeStampError(), expandedTS.getTimeStamp(), expandedTS.getTimeStampError());
+        }
+        expandedTS += expandedROFTS;
       }
     }
-    track.getTimeStamp() = ts.makeSymmetrical();
+    track.getTimeStamp() = (nominalCompatible ? nominalTS : expandedTS).makeSymmetrical();
+    // this is a sanity clamp
+    // we cannot be worse than the clock so we clamp to this
     if (track.getTimeStamp().getTimeStampError() > smallestROFHalf) {
       track.getTimeStamp().setTimeStampError(smallestROFHalf);
     }
-
     track.setUserField(0);
     track.getParamOut().setUserField(0);
     mTimeFrame->getTracks().emplace_back(track);

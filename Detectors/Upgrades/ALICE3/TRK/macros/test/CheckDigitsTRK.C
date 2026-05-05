@@ -75,7 +75,7 @@ void addTLines(float pitch)
   gPad->Update();
 }
 
-void CheckDigits(std::string digifile = "trkdigits.root", std::string hitfile = "o2sim_HitsTRK.root", std::string inputGeom = "o2sim_geometry.root", std::string paramfile = "o2sim_par.root")
+void CheckDigits(std::string digifile = "trkdigits.root", std::string hitfile = "o2sim_HitsTRK.root", std::string inputGeom = "o2sim_geometry.root")
 {
   gStyle->SetPalette(55);
 
@@ -97,6 +97,10 @@ void CheckDigits(std::string digifile = "trkdigits.root", std::string hitfile = 
   auto* gman = o2::trk::GeometryTGeo::Instance();
   gman->fillMatrixCache(o2::math_utils::bit2Mask(o2::math_utils::TransformType::L2G));
 
+  const int nVDLayers = gman->extractNumberOfLayersVD();
+  const int nMLOTLayers = gman->getNumberOfLayersMLOT();
+  const int nTotalLayers = nVDLayers + nMLOTLayers;
+
   SegmentationChip seg;
   // seg.Print();
 
@@ -117,223 +121,181 @@ void CheckDigits(std::string digifile = "trkdigits.root", std::string hitfile = 
 
   std::vector<std::unordered_map<uint64_t, int>> mc2hitVec(nevH);
 
-  // Digits
+  // Digits — per-layer branches
   TFile* digFile = TFile::Open(digifile.data());
   TTree* digTree = (TTree*)digFile->Get("o2sim");
 
-  std::vector<o2::itsmft::Digit>* digArr = nullptr;
-  digTree->SetBranchAddress("TRKDigit", &digArr);
+  int nDigitLayers = 0;
+  std::vector<std::vector<o2::itsmft::Digit>*> digArr(nTotalLayers, nullptr);
+  std::vector<std::vector<o2::itsmft::ROFRecord>*> rofRecordsArr(nTotalLayers, nullptr);
+  std::vector<o2::dataformats::IOMCTruthContainerView*> plabelsArr(nTotalLayers, nullptr);
 
-  o2::dataformats::IOMCTruthContainerView* plabels = nullptr;
-  digTree->SetBranchAddress("TRKDigitMCTruth", &plabels);
-
-  // Get Read Out Frame arrays
-  std::vector<o2::itsmft::ROFRecord>* ROFRecordArrray = nullptr;
-  digTree->SetBranchAddress("TRKDigitROF", &ROFRecordArrray);
-  std::vector<o2::itsmft::ROFRecord>& ROFRecordArrrayRef = *ROFRecordArrray;
-
-  std::vector<o2::itsmft::MC2ROFRecord>* MC2ROFRecordArrray = nullptr;
-  digTree->SetBranchAddress("TRKDigitMC2ROF", &MC2ROFRecordArrray);
-  std::vector<o2::itsmft::MC2ROFRecord>& MC2ROFRecordArrrayRef = *MC2ROFRecordArrray;
+  for (int iLayer = 0; iLayer < nTotalLayers; ++iLayer) {
+    if (!digTree->GetBranch(Form("TRKDigit_%i", iLayer))) {
+      break;
+    }
+    digTree->SetBranchAddress(Form("TRKDigit_%i", iLayer), &digArr[iLayer]);
+    digTree->SetBranchAddress(Form("TRKDigitROF_%i", iLayer), &rofRecordsArr[iLayer]);
+    digTree->SetBranchAddress(Form("TRKDigitMCTruth_%i", iLayer), &plabelsArr[iLayer]);
+    ++nDigitLayers;
+  }
 
   digTree->GetEntry(0);
 
-  int nROFRec = (int)ROFRecordArrrayRef.size();
-  std::vector<int> mcEvMin(nROFRec, hitTree->GetEntries());
-  std::vector<int> mcEvMax(nROFRec, -1);
-  o2::dataformats::ConstMCTruthContainer<o2::MCCompLabel> labels;
-  plabels->copyandflatten(labels);
-  delete plabels;
-
-  // >> build min and max MC events used by each ROF
-  for (int imc = MC2ROFRecordArrrayRef.size(); imc--;) {
-    const auto& mc2rof = MC2ROFRecordArrrayRef[imc];
-    // printf("MCRecord: ");
-    // mc2rof.print();
-
-    if (mc2rof.rofRecordID < 0) {
-      continue; // this MC event did not contribute to any ROF
+  // Load all MC hit events upfront and build the hit lookup map.
+  for (int im = 0; im < nevH; ++im) {
+    hitTree->SetBranchAddress("TRKHit", &hitArray[im]);
+    hitTree->GetEntry(im);
+    auto& mc2hit = mc2hitVec[im];
+    for (int ih = hitArray[im]->size(); ih--;) {
+      const auto& hit = (*hitArray[im])[ih];
+      uint64_t key = (uint64_t(hit.GetTrackID()) << 32) + hit.GetDetectorID();
+      mc2hit.emplace(key, ih);
     }
+  }
 
-    for (int irfd = mc2rof.maxROF - mc2rof.minROF + 1; irfd--;) {
+  // LOOP over layers, then ROFRecords within each layer
+  for (int iLayer = 0; iLayer < nDigitLayers; ++iLayer) {
+    auto& rofArr = *rofRecordsArr[iLayer];
+    const int nROFRec = (int)rofArr.size();
 
-      int irof = mc2rof.rofRecordID + irfd;
+    o2::dataformats::ConstMCTruthContainer<o2::MCCompLabel> labels;
+    plabelsArr[iLayer]->copyandflatten(labels);
 
-      if (irof >= nROFRec) {
-        LOG(error) << "ROF=" << irof << " from MC2ROF record is >= N ROFs=" << nROFRec;
-      }
-      if (mcEvMin[irof] > imc) {
-        mcEvMin[irof] = imc;
-      }
-      if (mcEvMax[irof] < imc) {
-        mcEvMax[irof] = imc;
-      }
-    }
-  } // << build min and max MC events used by each ROF
+    // LOOP on : ROFRecord array
+    for (unsigned int iROF = 0; iROF < rofArr.size(); ++iROF) {
 
-  unsigned int rofIndex = 0;
-  unsigned int rofNEntries = 0;
+      const unsigned int rofIndex = rofArr[iROF].getFirstEntry();
+      const unsigned int rofNEntries = rofArr[iROF].getNEntries();
 
-  // LOOP on : ROFRecord array
-  for (unsigned int iROF = 0; iROF < ROFRecordArrrayRef.size(); iROF++) {
+      // LOOP on : digits array
+      for (unsigned int iDigit = rofIndex; iDigit < rofIndex + rofNEntries; iDigit++) {
+        if (iDigit % 1000 == 0)
+          std::cout << "Layer " << iLayer << ": reading digit " << iDigit << " / " << digArr[iLayer]->size() << std::endl;
 
-    rofIndex = ROFRecordArrrayRef[iROF].getFirstEntry();
-    rofNEntries = ROFRecordArrrayRef[iROF].getNEntries();
+        Int_t ix = (*digArr[iLayer])[iDigit].getRow(), iz = (*digArr[iLayer])[iDigit].getColumn();
+        Int_t iDetID = (*digArr[iLayer])[iDigit].getChipIndex();
+        Int_t layer = gman->getLayer(iDetID);
+        Int_t disk = gman->getDisk(iDetID);
+        Int_t subDetID = gman->getSubDetID(iDetID);
+        Int_t petalCase = gman->getPetalCase(iDetID);
+        Int_t stave = gman->getStave(iDetID);
+        Int_t halfstave = gman->getHalfStave(iDetID);
 
-    // >> read and map MC events contributing to this ROF
-    for (int im = mcEvMin[iROF]; im <= mcEvMax[iROF]; im++) {
+        Float_t x = 0.f, y = 0.f, z = 0.f;
+        Float_t x_flat = 0.f, z_flat = 0.f;
 
-      if (!hitArray[im]) {
-
-        hitTree->SetBranchAddress("TRKHit", &hitArray[im]);
-        hitTree->GetEntry(im);
-
-        auto& mc2hit = mc2hitVec[im];
-
-        for (int ih = hitArray[im]->size(); ih--;) {
-
-          const auto& hit = (*hitArray[im])[ih];
-          uint64_t key = (uint64_t(hit.GetTrackID()) << 32) + hit.GetDetectorID();
-          mc2hit.emplace(key, ih);
+        if (disk != -1) {
+          continue; // skip disks for the moment
         }
-      }
-    }
 
-    // LOOP on : digits array
-    for (unsigned int iDigit = rofIndex; iDigit < rofIndex + rofNEntries; iDigit++) {
-      // if (iDigit % 10000 != 0) /// looking only at a small sample
-      //   continue;
+        if (subDetID != 0) {
+          seg.detectorToLocal(ix, iz, x, z, subDetID, layer, disk);
+        } else if (subDetID == 0) {
+          seg.detectorToLocal(ix, iz, x_flat, z_flat, subDetID, layer, disk);
+          o2::math_utils::Vector2D<float> xyCurved = seg.flatToCurved(layer, x_flat, 0.);
+          x = xyCurved.X();
+          y = xyCurved.Y();
+          z = z_flat;
+        }
 
-      if (iDigit % 1000 == 0)
-        std::cout << "Reading digit " << iDigit << " / " << digArr->size() << std::endl;
+        o2::math_utils::Point3D<float> locD(x, y, z);     // local Digit curved
+        o2::math_utils::Point3D<float> locDF(-1, -1, -1); // local Digit flat
 
-      Int_t ix = (*digArr)[iDigit].getRow(), iz = (*digArr)[iDigit].getColumn();
-      Int_t iDetID = (*digArr)[iDigit].getChipIndex();
-      Int_t layer = gman->getLayer(iDetID);
-      Int_t disk = gman->getDisk(iDetID);
-      Int_t subDetID = gman->getSubDetID(iDetID);
-      Int_t petalCase = gman->getPetalCase(iDetID);
-      Int_t stave = gman->getStave(iDetID);
-      Int_t halfstave = gman->getHalfStave(iDetID);
+        Int_t chipID = (*digArr[iLayer])[iDigit].getChipIndex();
+        auto lab = (labels.getLabels(iDigit))[0];
 
-      Float_t x = 0.f, y = 0.f, z = 0.f;
-      Float_t x_flat = 0.f, z_flat = 0.f;
+        int trID = lab.getTrackID();
 
-      if (disk != -1) {
-        continue; // skip disks for the moment
-      }
+        if (!lab.isValid()) { // not a noise
+          continue;
+        }
 
-      if (subDetID != 0) {
-        seg.detectorToLocal(ix, iz, x, z, subDetID, layer, disk);
-      } else if (subDetID == 0) {
-        seg.detectorToLocal(ix, iz, x_flat, z_flat, subDetID, layer, disk);
-        o2::math_utils::Vector2D<float> xyCurved = seg.flatToCurved(layer, x_flat, 0.);
-        x = xyCurved.X();
-        y = xyCurved.Y();
-        z = z_flat;
-      }
+        const auto gloD = gman->getMatrixL2G(chipID)(locD); // convert to global
 
-      o2::math_utils::Point3D<float> locD(x, y, z);     // local Digit curved
-      o2::math_utils::Point3D<float> locDF(-1, -1, -1); // local Digit flat
+        std::unordered_map<uint64_t, int>* mc2hit = &mc2hitVec[lab.getEventID()];
 
-      Int_t chipID = (*digArr)[iDigit].getChipIndex();
-      auto lab = (labels.getLabels(iDigit))[0];
+        // get MC info
+        uint64_t key = (uint64_t(trID) << 32) + chipID;
+        auto hitEntry = mc2hit->find(key);
 
-      int trID = lab.getTrackID();
+        if (hitEntry == mc2hit->end()) {
+          LOG(error) << "Failed to find MC hit entry for Tr" << trID << " chipID" << chipID;
+          continue;
+        }
 
-      if (!lab.isValid()) { // not a noise
-        continue;
-      }
+        ////// HITS
+        Hit& hit = (*hitArray[lab.getEventID()])[hitEntry->second];
 
-      const auto gloD = gman->getMatrixL2G(chipID)(locD); // convert to global
+        auto xyzLocE = gman->getMatrixL2G(chipID) ^ (hit.GetPos()); // inverse conversion from global to local
+        auto xyzLocS = gman->getMatrixL2G(chipID) ^ (hit.GetPosStart());
 
-      std::unordered_map<uint64_t, int>* mc2hit = &mc2hitVec[lab.getEventID()];
+        // Hit local reference: Both VD and MLOT use response-plane interpolation (in flat local frame).
+        // For VD, transform curved → flat first, then interpolate.
+        o2::math_utils::Vector3D<float> locH;  /// Hit reference (at response plane)
+        o2::math_utils::Vector3D<float> locHS; /// Hit, start pos
+        locHS.SetCoordinates(xyzLocS.X(), xyzLocS.Y(), xyzLocS.Z());
+        o2::math_utils::Vector3D<float> locHE; /// Hit, end pos
+        locHE.SetCoordinates(xyzLocE.X(), xyzLocE.Y(), xyzLocE.Z());
+        o2::math_utils::Vector3D<float> locHF;
 
-      // get MC info
-      uint64_t key = (uint64_t(trID) << 32) + chipID;
-      auto hitEntry = mc2hit->find(key);
+        if (subDetID == 0) {
+          // VD: Interpolate to VD reference plane in flat frame; apply same r to X and Z
+          auto flatSta = seg.curvedToFlat(layer, locHS.X(), locHS.Y());
+          auto flatEnd = seg.curvedToFlat(layer, locHE.X(), locHE.Y());
+          float x0 = flatSta.X(), y0 = flatSta.Y(), z0 = locHS.Z();
+          float dltx = flatEnd.X() - x0, dlty = flatEnd.Y() - y0, dltz = locHE.Z() - z0;
+          float r = (std::abs(dlty) > 1e-9f) ? (yPlaneVD - y0) / dlty : 0.5f;
+          locH.SetCoordinates(x0 + r * dltx, yPlaneVD, z0 + r * dltz);
+        } else {
+          // MLOT: Interpolate to response plane
+          float x0 = locHS.X(), y0 = locHS.Y(), z0 = locHS.Z();
+          float dltx = locHE.X() - x0, dlty = locHE.Y() - y0, dltz = locHE.Z() - z0;
+          float r = (std::abs(dlty) > 1e-9f) ? (yPlaneMLOT - y0) / dlty : 0.5f;
+          locH.SetCoordinates(x0 + r * dltx, yPlaneMLOT, z0 + r * dltz);
+        }
 
-      if (hitEntry == mc2hit->end()) {
+        int row = 0, col = 0;
+        float xlc = 0., zlc = 0.;
 
-        LOG(error) << "Failed to find MC hit entry for Tr" << trID << " chipID" << chipID;
-        continue;
-      }
+        if (subDetID == 0) {
+          Float_t x_flat = 0.f, y_flat = 0.f;
+          // locH is already in flat frame from interpolation above; convert digit to flat for comparison
+          o2::math_utils::Vector2D<float> xyFlatD = seg.curvedToFlat(layer, locD.X(), locD.Y());
+          locDF.SetCoordinates(xyFlatD.X(), xyFlatD.Y(), locD.Z());
+          locHF.SetCoordinates(locH.X(), locH.Y(), locH.Z()); // locH already in flat frame
+          seg.localToDetector(locHF.X(), locHF.Z(), row, col, subDetID, layer, disk);
+        } else {
+          seg.localToDetector(locH.X(), locH.Z(), row, col, subDetID, layer, disk);
+        }
 
-      ////// HITS
-      Hit& hit = (*hitArray[lab.getEventID()])[hitEntry->second];
+        seg.detectorToLocal(row, col, xlc, zlc, subDetID, layer, disk);
 
-      auto xyzLocE = gman->getMatrixL2G(chipID) ^ (hit.GetPos()); // inverse conversion from global to local
-      auto xyzLocS = gman->getMatrixL2G(chipID) ^ (hit.GetPosStart());
+        if (subDetID == 0) {
+          nt->Fill(chipID,                                                           /// detector ID
+                   gloD.X(), gloD.Y(), gloD.Z(),                                     /// global position retrieved from the digit: digit (row, col) ->local position -> global potision
+                   ix, iz,                                                           /// row and column of the digit
+                   row, col,                                                         /// row and col retrieved from the hit: hit global position -> hit local position -> detector position (row, col)
+                   locH.X(), locH.Z(),                                               /// x and z of the hit in the local reference frame: hit global position -> hit local position
+                   xlc, zlc,                                                         /// x and z of the hit in the local frame: hit global position -> hit local position -> detector position (row, col) -> local position
+                   locHF.X() - locDF.X(), locHF.Z() - locDF.Z());                    /// difference in x and z between the hit and the digit in the local frame
+          nt2->Fill(chipID, gloD.Z(), locHS.X() - locHE.X(), locHS.Z() - locHE.Z()); /// differences between local hit start and hit end positions
+        } else {
+          nt->Fill(chipID,                                                           /// detector ID
+                   gloD.X(), gloD.Y(), gloD.Z(),                                     /// global position retrieved from the digit: digit (row, col) ->local position -> global potision
+                   ix, iz,                                                           /// row and column of the digit
+                   row, col,                                                         /// row and col retrieved from the hit: hit global position -> hit local position -> detector position (row, col)
+                   locH.X(), locH.Z(),                                               /// x and z of the hit in the local reference frame: hit global position -> hit local position
+                   xlc, zlc,                                                         /// x and z of the hit in the local frame: hit global position -> hit local position -> detector position (row, col) -> local position
+                   locH.X() - locD.X(), locH.Z() - locD.Z());                        /// difference in x and z between the hit and the digit in the local frame
+          nt2->Fill(chipID, gloD.Z(), locHS.X() - locHE.X(), locHS.Z() - locHE.Z()); /// differences between local hit start and hit end positions
+        }
 
-      // Hit local reference: Both VD and MLOT use response-plane interpolation (in flat local frame).
-      // For VD, transform curved → flat first, then interpolate.
-      o2::math_utils::Vector3D<float> locH;  /// Hit reference (at response plane)
-      o2::math_utils::Vector3D<float> locHS; /// Hit, start pos
-      locHS.SetCoordinates(xyzLocS.X(), xyzLocS.Y(), xyzLocS.Z());
-      o2::math_utils::Vector3D<float> locHE; /// Hit, end pos
-      locHE.SetCoordinates(xyzLocE.X(), xyzLocE.Y(), xyzLocE.Z());
-      o2::math_utils::Vector3D<float> locHF;
+      } // end loop on digits array
 
-      if (subDetID == 0) {
-        // VD: Interpolate to VD reference plane in flat frame; apply same r to X and Z
-        auto flatSta = seg.curvedToFlat(layer, locHS.X(), locHS.Y());
-        auto flatEnd = seg.curvedToFlat(layer, locHE.X(), locHE.Y());
-        float x0 = flatSta.X(), y0 = flatSta.Y(), z0 = locHS.Z();
-        float dltx = flatEnd.X() - x0, dlty = flatEnd.Y() - y0, dltz = locHE.Z() - z0;
-        float r = (std::abs(dlty) > 1e-9f) ? (yPlaneVD - y0) / dlty : 0.5f;
-        locH.SetCoordinates(x0 + r * dltx, yPlaneVD, z0 + r * dltz);
-      } else {
-        // MLOT: Interpolate to response plane
-        float x0 = locHS.X(), y0 = locHS.Y(), z0 = locHS.Z();
-        float dltx = locHE.X() - x0, dlty = locHE.Y() - y0, dltz = locHE.Z() - z0;
-        float r = (std::abs(dlty) > 1e-9f) ? (yPlaneMLOT - y0) / dlty : 0.5f;
-        locH.SetCoordinates(x0 + r * dltx, yPlaneMLOT, z0 + r * dltz);
-      }
+    } // end loop on ROFRecords
 
-      int row = 0, col = 0;
-      float xlc = 0., zlc = 0.;
-
-      if (subDetID == 0) {
-        Float_t x_flat = 0.f, y_flat = 0.f;
-        // locH is already in flat frame from interpolation above; convert digit to flat for comparison
-        o2::math_utils::Vector2D<float> xyFlatD = seg.curvedToFlat(layer, locD.X(), locD.Y());
-        locDF.SetCoordinates(xyFlatD.X(), xyFlatD.Y(), locD.Z());
-        locHF.SetCoordinates(locH.X(), locH.Y(), locH.Z()); // locH already in flat frame
-        seg.localToDetector(locHF.X(), locHF.Z(), row, col, subDetID, layer, disk);
-      }
-
-      else {
-        seg.localToDetector(locH.X(), locH.Z(), row, col, subDetID, layer, disk);
-      }
-
-      seg.detectorToLocal(row, col, xlc, zlc, subDetID, layer, disk);
-
-      if (subDetID == 0) {
-        nt->Fill(chipID,                                        /// detector ID
-                 gloD.X(), gloD.Y(), gloD.Z(),                  /// global position retrieved from the digit: digit (row, col) ->local position -> global potision
-                 ix, iz,                                        /// row and column of the digit
-                 row, col,                                      /// row and col retrieved from the hit: hit global position -> hit local position -> detector position (row, col)
-                 locH.X(), locH.Z(),                            /// x and z of the hit in the local reference frame: hit global position -> hit local position
-                 xlc, zlc,                                      /// x and z of the hit in the local frame: hit global position -> hit local position -> detector position (row, col) -> local position
-                 locHF.X() - locDF.X(), locHF.Z() - locDF.Z()); /// difference in x and z between the hit and the digit in the local frame
-
-        nt2->Fill(chipID, gloD.Z(), locHS.X() - locHE.X(), locHS.Z() - locHE.Z()); /// differences between local hit start and hit end positions
-      } else {
-
-        nt->Fill(chipID,                                                           /// detector ID
-                 gloD.X(), gloD.Y(), gloD.Z(),                                     /// global position retrieved from the digit: digit (row, col) ->local position -> global potision
-                 ix, iz,                                                           /// row and column of the digit
-                 row, col,                                                         /// row and col retrieved from the hit: hit global position -> hit local position -> detector position (row, col)
-                 locH.X(), locH.Z(),                                               /// x and z of the hit in the local reference frame: hit global position -> hit local position
-                 xlc, zlc,                                                         /// x and z of the hit in the local frame: hit global position -> hit local position -> detector position (row, col) -> local position
-                 locH.X() - locD.X(), locH.Z() - locD.Z());                        /// difference in x and z between the hit and the digit in the local frame
-                                                                                   //  locHS.X() - locHE.X(), locHS.Z() - locHE.Z()); /// difference in x and z between the hit and the digit in the local frame
-        nt2->Fill(chipID, gloD.Z(), locHS.X() - locHE.X(), locHS.Z() - locHE.Z()); /// differences between local hit start and hit end positions
-      }
-
-    } // end loop on digits array
-
-  } // end loop on ROFRecords array
+  } // end loop on layers
 
   // digit maps in the xy and yz planes
   auto canvXY = new TCanvas("canvXY", "", 1600, 2400);

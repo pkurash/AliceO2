@@ -11,4 +11,5 @@
 
 add_subdirectory(base)
 add_subdirectory(simulation)
+add_subdirectory(DataFormatsIOTOF)
 add_subdirectory(macros)

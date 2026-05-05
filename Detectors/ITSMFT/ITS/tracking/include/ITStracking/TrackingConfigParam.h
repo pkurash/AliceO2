@@ -29,16 +29,16 @@ struct VertexerParamConfig : public o2::conf::ConfigurableParamHelper<VertexerPa
   // geometrical cuts for tracklet selection for Pb-Pb
   float zCut = 0.002f;
   float phiCut = 0.005f;
-  float pairCut = 0.0211211f;
-  float clusterCut = 0.4275412f;
-  float coarseZWindow = 0.6521316f;
-  float seedDedupZCut = 0.1461061f;
-  float refitDedupZCut = 0.1873750f;
-  float duplicateZCut = 0.7985643f;
-  float finalSelectionZCut = 0.2932624f;
-  float duplicateDistance2Cut = 0.0223001f;
+  float pairCut = 0.017321f;
+  float clusterCut = 0.170048f;
+  float coarseZWindow = 0.055458f;
+  float seedDedupZCut = 0.116685f;
+  float refitDedupZCut = 0.039855f;
+  float duplicateZCut = 0.200097f;
+  float finalSelectionZCut = 0.034535f;
+  float duplicateDistance2Cut = 0.005117f;
   float tanLambdaCut = 0.002f; // tanLambda = deltaZ/deltaR
-  float nSigmaCut = 0.0479011f;
+  float nSigmaCut = 0.0164651f;
   float maxZPositionAllowed = 25.f; // 4x sZ of the beam
 
   // Artefacts selections
