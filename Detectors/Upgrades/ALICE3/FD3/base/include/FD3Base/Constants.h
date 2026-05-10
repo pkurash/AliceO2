@@ -48,15 +48,6 @@ struct Constants {
   static constexpr float etaMax_cher_v2  = 7.0f;
   static constexpr float zscint_v2 = 1500.0f;
   static constexpr float zcher_v2  = 1560.0f;
-
-//  static constexpr float etaMin_scintA_v3 = 2.0f;
-//  static constexpr float etaMax_scintA_v3 = 5.0f;
-//  static constexpr float etaMin_scintC_v3 = -4.9f;
-//  static constexpr float etaMax_scintC_v3 = -2.5f;
-//  static constexpr float etaMin_cher_v3  = 5.0f;
-//  static constexpr float etaMax_cher_v3  = 7.0f;
-//   static constexpr float zscint_v3 = 410.0f;
-//   static constexpr float zcher_v3  = 1560.0f;
 };
 
 } // namespace fd3

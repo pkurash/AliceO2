@@ -119,6 +119,8 @@ Detector::Detector(bool active)
       mTopVolumeNameScint = "barrel";
       mTopVolumeNameCher = "cave";
       break;
+   default:
+      LOG(fatal) << "The version number should be either 1, 2 or 3!";
   }
 
 }
@@ -157,6 +159,7 @@ void Detector::InitializeO2Detector()
   LOG(info) << "Initialize Forward Detector";
   mGeometryTGeo = GeometryTGeo::Instance();
   defineSensitiveVolumes();
+  definePassiveVolumes();    
 }
 
 bool Detector::ProcessHits(FairVolume* vol)
@@ -353,7 +356,7 @@ void Detector::buildModules()
 
 TGeoVolumeAssembly* Detector::buildModuleScintA()
 {
-  TGeoVolumeAssembly* mod = new TGeoVolumeAssembly("FD3_ScintA");
+  auto mod = new TGeoVolumeAssembly("FD3_ScintA");
 
   const TGeoMedium* medium = gGeoManager->GetMedium("FD3_Scintillator");
 
@@ -361,7 +364,7 @@ TGeoVolumeAssembly* Detector::buildModuleScintA()
 
   for (int ir = 0; ir < mNumberOfRingsScint; ir++) {
     std::string rName = "fd3_ring" + std::to_string(ir + 1);
-    TGeoVolumeAssembly* ring = new TGeoVolumeAssembly(rName.c_str());
+    auto ring = new TGeoVolumeAssembly(rName.c_str());
     float etaMin = mEtaMaxScintA - (ir + 1) * (mEtaMaxScintA - mEtaMinScintA) / mNumberOfRingsScint;
     float etaMax = mEtaMaxScintA - ir * (mEtaMaxScintA - mEtaMinScintA) / mNumberOfRingsScint;
     float zmod = mZScintA;
@@ -389,7 +392,7 @@ TGeoVolumeAssembly* Detector::buildModuleScintA()
 
 TGeoVolumeAssembly* Detector::buildModuleScintC()
 {
-  TGeoVolumeAssembly* mod = new TGeoVolumeAssembly("FD3_ScintC");
+  auto mod = new TGeoVolumeAssembly("FD3_ScintC");
 
   const TGeoMedium* medium = gGeoManager->GetMedium("FD3_Scintillator");
 
@@ -397,7 +400,7 @@ TGeoVolumeAssembly* Detector::buildModuleScintC()
 
   for (int ir = 0; ir < mNumberOfRingsScint; ir++) {
     std::string rName = "fd3_ring" + std::to_string(ir + 1 + mNumberOfRingsScint);
-    TGeoVolumeAssembly* ring = new TGeoVolumeAssembly(rName.c_str());
+    auto ring = new TGeoVolumeAssembly(rName.c_str());
     float etaMin = mEtaMinScintC + ir * (mEtaMaxScintC - mEtaMinScintC) / mNumberOfRingsScint;
     float etaMax = mEtaMinScintC + (ir + 1) * (mEtaMaxScintC - mEtaMinScintC) / mNumberOfRingsScint;
     float zmod = mZScintC;
@@ -425,7 +428,7 @@ TGeoVolumeAssembly* Detector::buildModuleScintC()
 
 TGeoVolumeAssembly* Detector::buildModuleCherA()
 {
-  TGeoVolumeAssembly* mod = new TGeoVolumeAssembly("FD3_CherA");
+  auto mod = new TGeoVolumeAssembly("FD3_CherA");
 
   const TGeoMedium* medium = gGeoManager->GetMedium("FD3_Glass");
 
@@ -433,7 +436,7 @@ TGeoVolumeAssembly* Detector::buildModuleCherA()
 
   for (int ir = 0; ir < mNumberOfRingsCher; ir++) {
     std::string rName = "fd3_ring" + std::to_string(ir + 1 + 2 * mNumberOfRingsScint);
-    TGeoVolumeAssembly* ring = new TGeoVolumeAssembly(rName.c_str());
+    auto ring = new TGeoVolumeAssembly(rName.c_str());
     float etaMin = mEtaMaxCherA - (ir + 1) * (mEtaMaxCherA - mEtaMinCherA) / mNumberOfRingsCher;
     float etaMax = mEtaMaxCherA - ir * (mEtaMaxCherA - mEtaMinCherA) / mNumberOfRingsCher;
     float zmod = mZCherA;
@@ -461,7 +464,7 @@ TGeoVolumeAssembly* Detector::buildModuleCherA()
 
 TGeoVolumeAssembly* Detector::buildModuleCherC()
 {
-  TGeoVolumeAssembly* mod = new TGeoVolumeAssembly("FD3_CherC");
+  auto mod = new TGeoVolumeAssembly("FD3_CherC");
 
   const TGeoMedium* medium = gGeoManager->GetMedium("FD3_Glass");
 
@@ -469,7 +472,7 @@ TGeoVolumeAssembly* Detector::buildModuleCherC()
 
   for (int ir = 0; ir < mNumberOfRingsCher; ir++) {
     std::string rName = "fd3_ring" + std::to_string(ir + 1 + 2 * mNumberOfRingsScint + mNumberOfRingsCher);
-    TGeoVolumeAssembly* ring = new TGeoVolumeAssembly(rName.c_str());
+    auto ring = new TGeoVolumeAssembly(rName.c_str());
     float etaMin = mEtaMinCherC + ir * (mEtaMaxCherC - mEtaMinCherC) / mNumberOfRingsCher;
     float etaMax = mEtaMinCherC + (ir + 1) * (mEtaMaxCherC - mEtaMinCherC) / mNumberOfRingsCher;
     float zmod = mZCherC;
@@ -501,16 +504,21 @@ void Detector::defineSensitiveVolumes()
 
   TGeoVolume* v;
 
-  int nCells = 2 * (mNumberOfRingsScint +  mNumberOfRingsCher) * mNumberOfSectors;
+  int nCells = 2 * mNumberOfRingsScint * mNumberOfSectors + 2 * mNumberOfRingsCher;
 
   for (int iv = 0; iv < nCells; iv++) {
     TString volumeName = "fd3_node" + std::to_string(iv);
     v = gGeoManager->GetVolume(volumeName);
     //LOG(info) << "Adding sensitive volume " << v->GetName();
-    LOG(info) << "Adding sensitive volume nr " << iv << " out of " << nCells;
+    //LOG(info) << "Adding sensitive volume nr " << iv << " out of " << nCells;
     AddSensitiveVolume(v);
   }
 
+}
+
+void Detector::definePassiveVolumes()
+{
+   // To be added later
 }
 
 float Detector::getRingSize(float z, float eta)
