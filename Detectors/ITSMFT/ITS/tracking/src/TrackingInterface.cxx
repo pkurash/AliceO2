@@ -50,9 +50,16 @@ void ITSTrackingInterface::initialise()
   }
   auto trackParams = TrackingMode::getTrackingParameters(mMode);
   auto vertParams = TrackingMode::getVertexingParameters(mMode);
+  overrideParameters(trackParams, vertParams);
   LOGP(info, "Initializing tracker in {} phase reconstruction with {} passes for tracking and {}/{} for vertexing", TrackingMode::toString(mMode), trackParams.size(), o2::its::VertexerParamConfig::Instance().nIterations, vertParams.size());
   mTracker->setParameters(trackParams);
   mVertexer->setParameters(vertParams);
+  TrackingParameters vertexTrackingParams;
+  mTimeFrame->initVertexingTopology(vertexTrackingParams);
+  if (!trackParams.empty()) {
+    mTimeFrame->initDefaultTrackingTopology(trackParams[0], NLayers);
+    mTimeFrame->initTrackerTopologies(gsl::span<const TrackingParameters>(trackParams.data(), trackParams.size()));
+  }
 
   if (mMode == TrackingMode::Cosmics) {
     mRunVertexer = false;
@@ -372,7 +379,7 @@ void ITSTrackingInterface::updateTimeDependentParams(framework::ProcessingContex
   }
   if (!initOnceDone) { // this params need to be queried only once
     initOnceDone = true;
-    pc.inputs().get<o2::itsmft::TopologyDictionary*>("itscldict"); // just to trigger the finaliseCCDB
+    requestTopologyDictionary(pc);
     pc.inputs().get<o2::itsmft::DPLAlpideParam<o2::detectors::DetID::ITS>*>("itsalppar");
     if (pc.inputs().getPos("itsTGeo") >= 0) {
       pc.inputs().get<o2::its::GeometryTGeo*>("itsTGeo");
@@ -483,6 +490,11 @@ void ITSTrackingInterface::setTraitsFromProvider(VertexerTraitsN* vertexerTraits
   mTimeFrame->setMemoryPool(mMemoryPool);
   mTracker->setMemoryPool(mMemoryPool);
   mVertexer->setMemoryPool(mMemoryPool);
+}
+
+void ITSTrackingInterface::requestTopologyDictionary(framework::ProcessingContext& pc)
+{
+  pc.inputs().get<o2::itsmft::TopologyDictionary*>("itscldict"); // just to trigger the finaliseCCDB
 }
 
 void ITSTrackingInterface::loadROF(gsl::span<const itsmft::ROFRecord>& trackROFspan,
