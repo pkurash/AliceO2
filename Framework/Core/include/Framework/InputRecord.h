@@ -35,6 +35,7 @@
 #include <memory>
 #include <type_traits>
 #include <concepts>
+#include <span>
 
 #include <fairmq/FwdDecls.h>
 
@@ -43,6 +44,12 @@ namespace o2::framework
 
 // Wrapper class to get CCDB metadata
 struct CCDBMetadataExtractor {
+};
+
+/// Tag type to retrieve the raw binary payload of a CCDB entry without ROOT
+/// deserialization. The returned span is valid for the duration of the
+/// processing callback. Use as: inputs.get<CCDBBlob>("binding")
+struct CCDBBlob {
 };
 
 struct InputSpec;
@@ -522,6 +529,18 @@ class InputRecord
     return cache.idToMetadata[id];
   }
 
+  template <typename T = DataRef, typename R>
+  std::span<const char> get(R binding, int part = 0) const
+    requires std::same_as<T, CCDBBlob>
+  {
+    auto ref = getRef(binding, part);
+    auto header = DataRefUtils::getHeader<header::DataHeader*>(ref);
+    if (header->payloadSerializationMethod != header::gSerializationMethodCCDB) {
+      throw runtime_error("Attempt to extract CCDBBlob from a non-CCDB-serialized message");
+    }
+    return DataRefUtils::getCCDBPayloadBlob(ref);
+  }
+
   template <typename T>
     requires(std::same_as<T, DataRef>)
   decltype(auto) get(ConcreteDataMatcher matcher, int part = 0)
@@ -529,7 +548,7 @@ class InputRecord
     auto pos = getPos(matcher);
     if (pos < 0) {
       auto msg = describeAvailableInputs();
-      throw runtime_error_f("InputRecord::get: no input with binding %s found. %s", DataSpecUtils::describe(matcher).c_str(), msg.c_str());
+      throw runtime_error_f("InputRecord::get: no input %s found. %s", DataSpecUtils::describe(matcher).c_str(), msg.c_str());
     }
     return getByPos(pos, part);
   }
@@ -668,6 +687,11 @@ class InputRecord
       return mPosition;
     }
 
+    [[nodiscard]] auto parts() const
+    {
+      return mParent->parts(mPosition);
+    }
+
    private:
     size_t mPosition;
     size_t mSize;
@@ -688,54 +712,19 @@ class InputRecord
     using reference = typename BaseType::reference;
     using pointer = typename BaseType::pointer;
     using ElementType = typename std::remove_const<value_type>::type;
-    using iterator = InputSpan::Iterator<SelfType, T>;
-    using const_iterator = InputSpan::Iterator<SelfType, const T>;
 
     InputRecordIterator(InputRecord const* parent, bool isEnd = false)
       : BaseType(parent, isEnd)
     {
     }
 
-    /// Initial indices for part-level iteration: first part starts at {headerIdx=0, payloadIdx=1}.
-    [[nodiscard]] DataRefIndices initialIndices() const { return {0, 1}; }
-    /// Sentinel used by nextIndicesGetter to signal end-of-slot.
-    [[nodiscard]] DataRefIndices endIndices() const { return {size_t(-1), size_t(-1)}; }
-
-    /// Get element at the given raw message indices in O(1).
-    [[nodiscard]] ElementType getAtIndices(DataRefIndices indices) const
-    {
-      return this->parent()->getAtIndices(this->position(), indices);
-    }
-
-    /// Advance @a current to the next part's indices in O(1).
-    [[nodiscard]] DataRefIndices nextIndices(DataRefIndices current) const
-    {
-      return this->parent()->nextIndices(this->position(), current);
-    }
-
-    /// Check if slot is valid, index of part is not used
+    /// Check if slot is valid
     [[nodiscard]] bool isValid(size_t = 0) const
     {
       if (this->position() < this->parent()->size()) {
         return this->parent()->isValid(this->position());
       }
       return false;
-    }
-
-    /// Get number of parts in input slot
-    [[nodiscard]] size_t size() const
-    {
-      return this->parent()->getNofParts(this->position());
-    }
-
-    [[nodiscard]] const_iterator begin() const
-    {
-      return const_iterator(this, size() == 0);
-    }
-
-    [[nodiscard]] const_iterator end() const
-    {
-      return const_iterator(this, true);
     }
   };
 
@@ -751,6 +740,24 @@ class InputRecord
   {
     return {this, true};
   }
+
+  /// A range over the parts of a single slot that sets ref.spec on each DataRef.
+  struct PartRange {
+    InputRecord const* record;
+    size_t slot;
+
+    [[nodiscard]] DataRefIndices initialIndices() const { return {0, 1}; }
+    [[nodiscard]] DataRefIndices endIndices() const { return {size_t(-1), size_t(-1)}; }
+    [[nodiscard]] DataRef getAtIndices(DataRefIndices idx) const { return record->getAtIndices((int)slot, idx); }
+    [[nodiscard]] DataRefIndices nextIndices(DataRefIndices idx) const { return record->nextIndices((int)slot, idx); }
+    [[nodiscard]] size_t size() const { return record->getNofParts((int)slot); }
+
+    [[nodiscard]] InputSpan::Iterator<PartRange, const DataRef> begin() const { return {this, size() == 0}; }
+    [[nodiscard]] InputSpan::Iterator<PartRange, const DataRef> end() const { return {this, true}; }
+  };
+
+  /// Return an iterable range over all parts in slot @a pos (DataRef objects have spec set).
+  [[nodiscard]] PartRange parts(size_t pos) const { return {this, pos}; }
 
   InputSpan& span()
   {
