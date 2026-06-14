@@ -50,9 +50,15 @@
 #include "TRKDigitizerSpec.h"
 #include "TRKWorkflow/DigitWriterSpec.h"
 
+<<<<<<< HEAD
 // for FD3
 #include "FD3DigitizerSpec.h"
 #include "FD3Workflow/FD3DigitWriterSpec.h"
+=======
+// for alice 3 TF3
+#include "IOTOFDigitizerSpec.h"
+#include "IOTOFWorkflow/DigitWriterSpec.h"
+>>>>>>> dev
 #endif
 
 // for TOF
@@ -670,6 +676,7 @@ WorkflowSpec defineDataProcessing(ConfigContext const& configcontext)
     specs.emplace_back(o2::trk::getTRKDigitWriterSpec(mctruth));
   }
 
+<<<<<<< HEAD
   // FD3 part
   if (isEnabled(o2::detectors::DetID::FD3)) {
     detList.emplace_back(o2::detectors::DetID::FD3);
@@ -677,6 +684,15 @@ WorkflowSpec defineDataProcessing(ConfigContext const& configcontext)
     specs.emplace_back(o2::fd3::getFD3DigitizerSpec(fanoutsize++, mctruth));
     // connect the ALICE 3 FD3 digit writer
     specs.emplace_back(o2::fd3::getFD3DigitWriterSpec(mctruth));
+=======
+  // the ALICE 3 IOTOF part
+  if (isEnabled(o2::detectors::DetID::TF3)) {
+    detList.emplace_back(o2::detectors::DetID::TF3);
+    // connect the ALICE 3 IOTOF digitization
+    specs.emplace_back(o2::iotof::getIOTOFDigitizerSpec(fanoutsize++, mctruth));
+    // connect the ALICE 3 IOTOF digit writer
+    specs.emplace_back(o2::iotof::getIOTOFDigitWriterSpec(mctruth));
+>>>>>>> dev
   }
 #endif
 

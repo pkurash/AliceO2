@@ -167,19 +167,25 @@ std::shared_ptr<arrow::Table> ArrowHelpers::concatTables(std::vector<std::shared
   return arrow::Table::Make(std::make_shared<arrow::Schema>(resultFields), columns);
 }
 
+// ASCII-only lowercase. Column labels are plain identifiers, so we deliberately
+// avoid the locale-aware std::tolower: it goes through the C locale facet on
+// every character and dominated getIndexFromLabel in profiles.
+static constexpr char asciiToLower(char c)
+{
+  return (c >= 'A' && c <= 'Z') ? static_cast<char>(c + 32) : c;
+}
+
 arrow::ChunkedArray* getIndexFromLabel(arrow::Table* table, std::string_view label)
 {
-  auto field = std::ranges::find_if(table->schema()->fields(), [&](std::shared_ptr<arrow::Field> const& f) {
-    auto caseInsensitiveCompare = [](const std::string_view& str1, const std::string& str2) {
-      return std::ranges::equal(
-        str1, str2,
-        [](char c1, char c2) {
-          return std::tolower(static_cast<unsigned char>(c1)) ==
-                 std::tolower(static_cast<unsigned char>(c2));
-        });
-    };
-
-    return caseInsensitiveCompare(label, f->name());
+  // Take the exact-match common case first (string_view comparison checks length
+  // then memcmp), and fall back to a case-insensitive scan only when the labels
+  // differ in case.
+  auto field = std::ranges::find_if(table->schema()->fields(), [label](std::shared_ptr<arrow::Field> const& f) {
+    std::string_view name = f->name();
+    return label == name ||
+           std::ranges::equal(label, name, [](char c1, char c2) {
+             return asciiToLower(c1) == asciiToLower(c2);
+           });
   });
   if (field == table->schema()->fields().end()) {
     o2::framework::throw_error(o2::framework::runtime_error_f("Unable to find column with label %s.", label));
@@ -311,9 +317,16 @@ void PreslicePolicyGeneral::updateSliceInfo(SliceInfoUnsortedPtr&& si)
 std::shared_ptr<arrow::Table> PreslicePolicySorted::getSliceFor(int value, std::shared_ptr<arrow::Table> const& input, uint64_t& offset) const
 {
   auto [offset_, count] = this->sliceInfo.getSliceFor(value);
-  auto output = input->Slice(offset_, count);
   offset = static_cast<int64_t>(offset_);
-  return output;
+  if (count == 0) {
+    // Empty group: avoid slicing every column only to discard it. Cache one
+    // empty (0-row) table per input table and reuse it (see GroupSlicer).
+    if (emptySlice.first != input.get()) {
+      emptySlice = {input.get(), input->Slice(0, 0)};
+    }
+    return emptySlice.second;
+  }
+  return input->Slice(offset_, count);
 }
 
 std::span<const int64_t> PreslicePolicyGeneral::getSliceFor(int value) const

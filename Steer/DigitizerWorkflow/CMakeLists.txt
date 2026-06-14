@@ -29,6 +29,7 @@ o2_add_executable(digitizer-workflow
                           src/TOFDigitizerSpec.cxx
                           $<$<BOOL:${ENABLE_UPGRADES}>:src/ITS3DigitizerSpec.cxx>
                           $<$<BOOL:${ENABLE_UPGRADES}>:src/TRKDigitizerSpec.cxx>
+                          $<$<BOOL:${ENABLE_UPGRADES}>:src/IOTOFDigitizerSpec.cxx>
 			  $<$<BOOL:${ENABLE_UPGRADES}>:src/FD3DigitizerSpec.cxx>
                   PUBLIC_LINK_LIBRARIES O2::Framework
                                         O2::Steer
@@ -71,8 +72,11 @@ o2_add_executable(digitizer-workflow
                                         $<$<BOOL:${ENABLE_UPGRADES}>:O2::ITS3Workflow>
                                         $<$<BOOL:${ENABLE_UPGRADES}>:O2::TRKSimulation>
                                         $<$<BOOL:${ENABLE_UPGRADES}>:O2::TRKWorkflow>
+                                        $<$<BOOL:${ENABLE_UPGRADES}>:O2::IOTOFSimulation>
+                                        $<$<BOOL:${ENABLE_UPGRADES}>:O2::IOTOFWorkflow>
 					$<$<BOOL:${ENABLE_UPGRADES}>:O2::FD3Simulation>
-					$<$<BOOL:${ENABLE_UPGRADES}>:O2::FD3Workflow>)
+					$<$<BOOL:${ENABLE_UPGRADES}>:O2::FD3Workflow>
+                                        )
 
 
 o2_add_executable(mctruth-testworkflow

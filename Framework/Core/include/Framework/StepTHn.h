@@ -58,7 +58,7 @@ class StepTHn : public TNamed
   virtual Long64_t Merge(TCollection* list) = 0;
 
   TAxis* GetAxis(int i) { return mPrototype->GetAxis(i); }
-  void Sumw2(){}; // TODO: added for compatibiltiy with registry, but maybe it would be useful also in StepTHn as toggle for error weights
+  void Sumw2() {}; // TODO: added for compatibiltiy with registry, but maybe it would be useful also in StepTHn as toggle for error weights
 
  protected:
   void init();
@@ -67,6 +67,7 @@ class StepTHn : public TNamed
   void deleteContainers();
 
   Long64_t getGlobalBinIndex(const Int_t* binIdx);
+  virtual void updateBin(int iStep, Long64_t bin, double weight) = 0;
 
   Long64_t mNBins;  // number of total bins
   Int_t mNVars;     // number of variables
@@ -80,6 +81,18 @@ class StepTHn : public TNamed
   Int_t* mNbinsCache;  //! cache Nbins per axis
   Double_t* mLastVars; //! caching of last used bins (in many loops some vars are the same for a while)
   Int_t* mLastBins;    //! caching of last used bins (in many loops some vars are the same for a while)
+
+  // Fast bin lookup table: for each axis, maps a quantized position to an approximate bin.
+  static constexpr Int_t kLookupSize = 1024; // number of slots per axis
+  struct AxisLookup {
+    Double_t invSlotWidth;    // 1.0 / slot width for fast index computation
+    Double_t xmin;            // axis minimum
+    Double_t xmax;            // axis maximum
+    const Double_t* edges;    // pointer to bin edges array (nBins+1 entries)
+    Int_t nBins;              // number of bins
+    Int_t table[kLookupSize]; // slot -> bin index (1-based, TAxis convention)
+  };
+  AxisLookup* mLookup; //! per-axis lookup tables
 
   THnSparse* mPrototype; // not filled used as prototype histogram for axis functionality etc.
 
@@ -104,6 +117,28 @@ class StepTHnT : public StepTHn
       return new TemplateArray(mNBins);
     } else {
       return new TemplateArray(*((TemplateArray*)src));
+    }
+  }
+
+  void updateBin(int iStep, Long64_t bin, double weight) override
+  {
+    if (!mValues[iStep]) {
+      mValues[iStep] = createArray();
+      LOGF(info, "Created values container for step %d", iStep);
+    }
+
+    if (weight != 1.) {
+      if (!mSumw2[iStep]) {
+        mSumw2[iStep] = createArray(mValues[iStep]);
+        LOGF(info, "Created sumw2 container for step %d", iStep);
+      }
+    }
+
+    auto* arr = static_cast<TemplateArray*>(mValues[iStep])->GetArray();
+    arr[bin] += weight;
+    if (mSumw2[iStep]) {
+      auto* sw2 = static_cast<TemplateArray*>(mSumw2[iStep])->GetArray();
+      sw2[bin] += weight * weight;
     }
   }
 

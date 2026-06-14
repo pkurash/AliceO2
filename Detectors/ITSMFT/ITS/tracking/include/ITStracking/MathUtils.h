@@ -16,8 +16,6 @@
 #ifndef O2_ITS_TRACKING_MATHUTILS_H_
 #define O2_ITS_TRACKING_MATHUTILS_H_
 
-#include <cstdint>
-
 #include "CommonConstants/MathConstants.h"
 #include "ITStracking/Constants.h"
 #include "MathUtils/Utils.h"
@@ -27,7 +25,7 @@
 namespace o2::its::math_utils
 {
 
-GPUhdi() float computePhi(float x, float y)
+GPUhdi() constexpr float computePhi(float x, float y)
 {
   return o2::math_utils::fastATan2(-y, -x) + o2::constants::math::PI;
 }
@@ -41,6 +39,11 @@ GPUhdi() constexpr float getNormalizedPhi(float phi)
 {
   phi -= o2::constants::math::TwoPI * o2::gpu::CAMath::Floor(phi * (1.f / o2::constants::math::TwoPI));
   return phi;
+}
+
+GPUhdi() constexpr float computeNormalizedPhi(float x, float y)
+{
+  return getNormalizedPhi(computePhi(x, y));
 }
 
 GPUhdi() float computeCurvature(float x1, float y1, float x2, float y2, float x3, float y3)
