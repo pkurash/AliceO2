@@ -15,6 +15,8 @@
 #pragma link off all classes;
 #pragma link off all functions;
 
-#pragma link C++ struct o2::dataformats::MeanVertexObject + ;
+#pragma link C++ class o2::dataformats::MeanVertexObject + ;
+#pragma link C++ class o2::dataformats::MeanVertexBiasParam + ;
+#pragma link C++ class o2::conf::ConfigurableParamHelper < o2::dataformats::MeanVertexBiasParam> + ;
 
 #endif

@@ -16,8 +16,10 @@
 #define GPUROOTDUMPCORE_H
 
 #include "GPUCommonDef.h"
+#include "utils/stdspinlock.h"
 #include <memory>
 #include <vector>
+#include <string>
 
 class TFile;
 
@@ -32,6 +34,7 @@ class GPUROOTDumpBase
 
  protected:
   GPUROOTDumpBase();
+  static std::atomic_flag mMutex;
   std::weak_ptr<GPUROOTDumpCore> mCore;
 };
 
@@ -52,9 +55,10 @@ class GPUROOTDumpCore
   ~GPUROOTDumpCore();
 
  private:
-  static std::shared_ptr<GPUROOTDumpCore> getAndCreate();
+  static std::shared_ptr<GPUROOTDumpCore> getAndCreate(const char* filename);
   static std::weak_ptr<GPUROOTDumpCore> get() { return sInstance; }
   static std::weak_ptr<GPUROOTDumpCore> sInstance;
+  std::string mFileName;
   std::unique_ptr<TFile> mFile;
   std::vector<GPUROOTDumpBase*> mBranches;
 #endif

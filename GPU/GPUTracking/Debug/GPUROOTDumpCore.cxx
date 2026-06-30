@@ -22,6 +22,7 @@
 using namespace o2::gpu;
 
 std::weak_ptr<GPUROOTDumpCore> GPUROOTDumpCore::sInstance;
+std::atomic_flag GPUROOTDumpBase::mMutex = ATOMIC_FLAG_INIT;
 
 GPUROOTDumpCore::GPUROOTDumpCore(GPUROOTDumpCore::GPUROOTDumpCorePrivate)
 {
@@ -38,7 +39,7 @@ GPUROOTDumpCore::~GPUROOTDumpCore()
   }
 }
 
-std::shared_ptr<GPUROOTDumpCore> GPUROOTDumpCore::getAndCreate()
+std::shared_ptr<GPUROOTDumpCore> GPUROOTDumpCore::getAndCreate(const char* filename)
 {
   static std::atomic_flag lock = ATOMIC_FLAG_INIT;
   while (lock.test_and_set(std::memory_order_acquire)) {
@@ -48,6 +49,10 @@ std::shared_ptr<GPUROOTDumpCore> GPUROOTDumpCore::getAndCreate()
     retVal = std::make_shared<GPUROOTDumpCore>(GPUROOTDumpCorePrivate());
     sInstance = retVal;
   }
+  if (*filename != 0 && retVal->mFileName != "" && retVal->mFileName != filename) {
+    throw std::runtime_error("GPUROOTDump reinitialized with different file name");
+  }
+  retVal->mFileName = filename;
   lock.clear(std::memory_order_release);
   return retVal;
 }
@@ -60,8 +65,11 @@ GPUROOTDumpBase::GPUROOTDumpBase()
   }
   p->mBranches.emplace_back(this);
   if (!p->mFile) {
-    std::remove("gpudebug.root");
-    p->mFile.reset(new TFile("gpudebug.root", "recreate"));
+    if (p->mFileName == "") {
+      throw std::runtime_error("GPUROOTDump output file name not set");
+    }
+    std::remove(p->mFileName.c_str());
+    p->mFile.reset(new TFile(p->mFileName.c_str(), "recreate"));
   }
   p->mFile->cd();
 }

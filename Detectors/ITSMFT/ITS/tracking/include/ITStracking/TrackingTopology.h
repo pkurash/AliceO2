@@ -35,11 +35,11 @@ template <int NLayers>
 class TrackingTopology
 {
  public:
-  using Id = uint8_t;
-  using Mask = LayerMask;
-  using Range = o2::dataformats::RangeReference<Id, Id>;
   static constexpr int MaxLinks = (NLayers * (NLayers - 1)) / 2;
   static constexpr int MaxCells = (NLayers * (NLayers - 1) * (NLayers - 2)) / 6;
+  using Id = std::conditional_t<MaxCells <= std::numeric_limits<uint8_t>::max(), uint8_t, uint16_t>;
+  using Mask = LayerMask;
+  using Range = o2::dataformats::RangeReference<Id, Id>;
   static_assert(NLayers < std::numeric_limits<Id>::max());
   static_assert(MaxLinks <= std::numeric_limits<Id>::max());
   static_assert(MaxCells <= std::numeric_limits<Id>::max());
@@ -70,6 +70,7 @@ class TrackingTopology
     const CellTopology* cells{nullptr};
     const Range* cellsByFirstLinkIndex{nullptr};
     const Id* cellsByFirstLink{nullptr};
+    Mask seedingLayerMask{0};
     Id nLinks{0};
     Id nCells{0};
     Id nCellsByFirstLink{0};
@@ -81,7 +82,7 @@ class TrackingTopology
 #ifndef GPUCA_GPUCODE
     std::string asString() const
     {
-      std::string out = fmt::format("TrackingTopology: links={} cells={}", nLinks, nCells);
+      std::string out = fmt::format("TrackingTopology: links={} cells={} seedingLayers={}", nLinks, nCells, seedingLayerMask.asString());
       out += "\n  links:";
       for (Id linkId = 0; linkId < nLinks; ++linkId) {
         const auto& t = links[linkId];
@@ -104,15 +105,24 @@ class TrackingTopology
 #endif
   };
 
-  void init(int maxLayers, int maxHoles, Mask holeLayerMask)
+  void init(int maxLayers, int maxHoles, Mask holeLayerMask, Mask seedingLayerMask = 0)
   {
     clear();
     mMaxLayers = o2::gpu::CAMath::Max(0, o2::gpu::CAMath::Min(maxLayers, NLayers));
     mMaxHoles = o2::gpu::CAMath::Max(maxHoles, 0);
     mHoleLayerMask = holeLayerMask;
+    mSeedingLayerMask = seedingLayerMask.empty() ? Mask::span(0, mMaxLayers - 1) : (seedingLayerMask & Mask::span(0, mMaxLayers - 1));
+#ifndef GPUCA_GPUCODE
+    if (mSeedingLayerMask.count() < constants::ClustersPerCell) {
+      LOGP(fatal, "Tracking topology has {} seeding layers, but at least {} are required to build CA cells", mSeedingLayerMask.count(), constants::ClustersPerCell);
+    }
+#endif
     for (int fromLayer = 0; fromLayer < mMaxLayers; ++fromLayer) {
+      if (!mSeedingLayerMask.has(fromLayer)) {
+        continue;
+      }
       for (int toLayer = fromLayer + 1; toLayer < mMaxLayers; ++toLayer) {
-        if (Mask::skipped(fromLayer, toLayer).isAllowedHoleMask(mMaxHoles, mHoleLayerMask)) {
+        if (mSeedingLayerMask.has(toLayer) && isAllowedSeedingLink(fromLayer, toLayer)) {
           mLinks[mNLinks++] = LayerLink{static_cast<Id>(fromLayer), static_cast<Id>(toLayer)};
         }
       }
@@ -126,7 +136,7 @@ class TrackingTopology
           continue;
         }
         const Mask hitMask{first.fromLayer, first.toLayer, second.toLayer};
-        if (hitMask.isAllowed(mMaxHoles, mHoleLayerMask)) {
+        if ((hitMask.holeMask() & mSeedingLayerMask).isAllowedHoleMask(mMaxHoles, mHoleLayerMask)) {
           mCells[mNCells++] = CellTopology{firstId, secondId, hitMask};
         }
       }
@@ -141,6 +151,7 @@ class TrackingTopology
                 mCells.data(),
                 mCellsByFirstLinkIndex.data(),
                 mCellsByFirstLink.data(),
+                mSeedingLayerMask,
                 mNLinks,
                 mNCells,
                 mNCellsByFirstLink};
@@ -155,6 +166,7 @@ class TrackingTopology
                 deviceCells,
                 deviceCellsByFirstLinkIndex,
                 deviceCellsByFirstLink,
+                mSeedingLayerMask,
                 mNLinks,
                 mNCells,
                 mNCellsByFirstLink};
@@ -202,9 +214,15 @@ class TrackingTopology
     mNCellsByFirstLink = offset;
   }
 
+  bool isAllowedSeedingLink(int fromLayer, int toLayer) const noexcept
+  {
+    return (Mask::skipped(fromLayer, toLayer) & mSeedingLayerMask).isAllowedHoleMask(mMaxHoles, mHoleLayerMask);
+  }
+
   int mMaxLayers{0};
   int mMaxHoles{0};
   Mask mHoleLayerMask{0};
+  Mask mSeedingLayerMask{0};
   Id mNLinks{0};
   Id mNCells{0};
   Id mNCellsByFirstLink{0};
