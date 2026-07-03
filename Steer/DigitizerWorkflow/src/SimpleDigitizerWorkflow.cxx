@@ -682,6 +682,7 @@ WorkflowSpec defineDataProcessing(ConfigContext const& configcontext)
     specs.emplace_back(o2::iotof::getIOTOFDigitizerSpec(fanoutsize++, mctruth));
     // connect the ALICE 3 IOTOF digit writer
     specs.emplace_back(o2::iotof::getIOTOFDigitWriterSpec(mctruth));
+  }
 
   // FD3 part
   if (isEnabled(o2::detectors::DetID::FD3)) {
