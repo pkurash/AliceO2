@@ -569,6 +569,9 @@ constexpr o2::header::DataOrigin gDataOriginEMC{"EMC"};
 constexpr o2::header::DataOrigin gDataOriginFT0{"FT0"};
 constexpr o2::header::DataOrigin gDataOriginFV0{"FV0"};
 constexpr o2::header::DataOrigin gDataOriginFDD{"FDD"};
+
+constexpr o2::header::DataOrigin gDataOriginFD2{"FD2"};
+
 constexpr o2::header::DataOrigin gDataOriginHMP{"HMP"};
 constexpr o2::header::DataOrigin gDataOriginITS{"ITS"};
 constexpr o2::header::DataOrigin gDataOriginMCH{"MCH"};

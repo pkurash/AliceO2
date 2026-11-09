@@ -33,6 +33,7 @@
 #include <FT0Simulation/Detector.h>
 #include <FV0Simulation/Detector.h>
 #include <FDDSimulation/Detector.h>
+#include <FD2Simulation/Detector.h>
 #include <HMPIDSimulation/Detector.h>
 #include <PHOSSimulation/Detector.h>
 #include <CPVSimulation/Detector.h>
@@ -355,6 +356,11 @@ void build_geometry(FairRunSim* run = nullptr)
   if (isActivated("FDD")) {
     // FIT-FDD
     addReadoutDetector(new o2::fdd::Detector(isReadout("FDD")));
+  }
+
+  if (isActivated("FD2")) {
+    // FIT-FD2
+    addReadoutDetector(new o2::fd2::Detector(isReadout("FD2")));
   }
 
   if (isActivated("HMP")) {

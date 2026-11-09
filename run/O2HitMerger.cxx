@@ -50,6 +50,7 @@
 #include <FT0Simulation/Detector.h>
 #include <FV0Simulation/Detector.h>
 #include <FDDSimulation/Detector.h>
+#include <FD2Simulation/Detector.h>
 #include <HMPIDSimulation/Detector.h>
 #include <PHOSSimulation/Detector.h>
 #include <CPVSimulation/Detector.h>
@@ -881,6 +882,7 @@ void O2HitMerger::initDetInstances()
     {DetID::FT0, [] { return std::make_unique<o2::ft0::Detector>(true); }},
     {DetID::FV0, [] { return std::make_unique<o2::fv0::Detector>(true); }},
     {DetID::FDD, [] { return std::make_unique<o2::fdd::Detector>(true); }},
+    {DetID::FD2, [] { return std::make_unique<o2::fd2::Detector>(true); }},
     {DetID::MCH, [] { return std::make_unique<o2::mch::Detector>(true); }},
     {DetID::MID, [] { return std::make_unique<o2::mid::Detector>(true); }},
     {DetID::ZDC, [] { return std::make_unique<o2::zdc::Detector>(true); }},

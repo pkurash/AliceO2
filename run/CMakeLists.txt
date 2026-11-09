@@ -25,6 +25,7 @@ target_link_libraries(allsim
                                 O2::ExternalDetectors
                                 O2::EMCALSimulation
                                 O2::FDDSimulation
+                                O2::FD2Simulation
                                 O2::Field
                                 O2::HMPIDSimulation
                                 O2::ITSSimulation
