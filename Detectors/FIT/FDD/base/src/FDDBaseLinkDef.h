@@ -15,6 +15,9 @@
 #pragma link off all classes;
 #pragma link off all functions;
 
+#pragma link C++ class o2::fdd::Constants + ;
 #pragma link C++ class o2::fdd::Geometry + ;
+#pragma link C++ class o2::fdd::FDDBaseParam +;
+#pragma link C++ class o2::conf::ConfigurableParamHelper < o2::fdd::FDDBaseParam > +;
 
 #endif

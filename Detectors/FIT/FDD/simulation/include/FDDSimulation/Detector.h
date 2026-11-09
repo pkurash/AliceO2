@@ -20,6 +20,7 @@
 #include "DetectorsBase/Detector.h"
 #include "DataFormatsFDD/Hit.h"
 #include "FDDBase/Geometry.h"
+#include "FDDBase/FDDBaseParam.h"
 #include <TVector3.h>
 
 class FairModule;
@@ -37,7 +38,7 @@ class Detector : public o2::base::DetImpl<Detector>
  public:
   Detector(Bool_t Active);
 
-  /// Default constructor
+  // Default constructor
   Detector() = default;
 
   /// Default destructor
@@ -64,8 +65,15 @@ class Detector : public o2::base::DetImpl<Detector>
   void EndOfEvent() override { Reset(); }
 
   void CreateMaterials();
+  void CreateExperimentalMaterials();
   void ConstructGeometry() override;
 
+  enum EMedia {
+    Scintillator,
+    RadiatorOpticalGlass,
+    Fiber
+  };
+  
  private:
   /// copy constructor (used in MT)
   Detector(const Detector& rhs);

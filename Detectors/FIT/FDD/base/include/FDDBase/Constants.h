@@ -37,6 +37,22 @@ constexpr float PMNbOfSecElec = 6.0;          // Number of secondary electrons e
 
 constexpr int NTimeBinsPerBC = 256; // number of samples per BC
 
+// Experimental setup
+
+struct Constants{
+  static constexpr float zScintA = 1700.0f;
+  static constexpr float zScintC = - 1950.0f;
+
+  static constexpr float dzScint = 4.0f;
+
+  static constexpr unsigned int nSectScint = 8;
+  static constexpr unsigned int nRingsScint = 1;
+
+  static constexpr float rMinFiber = 0.0f; // fiber min radius
+  static constexpr float rMaxFiber = 0.1f; // fiber max radius
+  static constexpr float lenFiber = 12.0f; // fiber length
+};
+
 } // namespace fdd
 } // namespace o2
 

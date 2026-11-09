@@ -44,8 +44,12 @@ class Geometry
 
  private:
   void buildGeometry();
-
   int mGeometryType;
+
+  TGeoVolumeAssembly* buildModuleScint(float rmin, float rmax);
+  TGeoVolumeAssembly* buildFiberBundle();
+
+  int mChannelCounter;
 
   ClassDefNV(Geometry, 1);
 };

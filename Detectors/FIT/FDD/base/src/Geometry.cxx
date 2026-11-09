@@ -1,3 +1,4 @@
+// }
 // Copyright 2019-2020 CERN and copyright holders of ALICE O2.
 // See https://alice-o2.web.cern.ch/copyright for details of the copyright holders.
 // All rights not expressly granted are reserved.
@@ -10,6 +11,8 @@
 // or submit itself to any jurisdiction.
 #include <iomanip>
 #include "FDDBase/Geometry.h"
+#include "FDDBase/Constants.h"
+#include "FDDBase/FDDBaseParam.h"
 
 #include <TGeoManager.h>
 #include <TGeoBBox.h>
@@ -19,6 +22,8 @@
 #include <TGeoVolume.h>
 #include <TGeoMatrix.h>
 #include "Framework/Logger.h"
+
+#include "TMath.h"
 
 ClassImp(o2::fdd::Geometry);
 
@@ -39,6 +44,8 @@ void Geometry::buildGeometry()
 {
 
   LOG(info) << "Geometry::buildGeometry()::Volume name = FDD";
+
+  auto& baseParam = FDDBaseParam::Instance();
 
   //Rotations used
   //TGeoRotation* Rx90m = new TGeoRotation("Rx90m", 0., -90., 0.);
@@ -152,16 +159,110 @@ void Geometry::buildGeometry()
   if (!vCaveRB24) {
     LOG(fatal) << "Could not find the top volume for A-side";
   }
-  const Float_t kPosFDA = 1696.67 - 1313.347 - 75.; // z-center of assembly (cm)
-  vCaveRB24->AddNode(vFDAarray, 1, new TGeoTranslation(0., 0., kPosFDA - kFDACelldz / 2. - 0.1));
-  vCaveRB24->AddNode(vFDAarray, 2, new TGeoTranslation(0., 0., kPosFDA + kFDACelldz / 2. + 0.1));
+  if (baseParam.isExperimental) {
+     float rmin = baseParam.rminA, rmax = baseParam.rmaxA;
+     auto vFDDA = buildModuleScint(rmin, rmax);
+     vFDDA->SetName("FDDA");
+     vCaveRB24->AddNode(vFDDA, 1, new TGeoTranslation(0., 0., Constants::zScintA));
+     int nsect = Constants::nSectScint;
+     for (int i = 0; i < nsect; i ++){
+       float rb = 0.5 * (rmin + rmax);
+       float theta = (2 * i + 1) * TMath::TwoPi() / nsect / 2;
+       auto bundleA = buildFiberBundle();
+       vCaveRB24->AddNode(bundleA, 1, new TGeoTranslation(rb * TMath::Cos(theta), rb * TMath::Sin(theta), Constants::zScintA + Constants::dzScint / 2 + Constants::lenFiber / 2 ));
+     }
+  } else {
+    const Float_t kPosFDA = 1696.67 - 1313.347 - 75.; // z-center of assembly (cm)
+    vCaveRB24->AddNode(vFDAarray, 1, new TGeoTranslation(0., 0., kPosFDA - kFDACelldz / 2. - 0.1));
+    vCaveRB24->AddNode(vFDAarray, 2, new TGeoTranslation(0., 0., kPosFDA + kFDACelldz / 2. + 0.1));
+  }
 
   // C side
   TGeoVolume* vCave = gGeoManager->GetVolume("cave");
   if (!vCave) {
     LOG(fatal) << "Could not find the top volume for C-side";
   }
-  const Float_t kPosFDC = -kZbegFrontBar - 2. - 3.0 - 0.3; // 3.0 = (5.6 + 0.2 + 0.2)/2.;
-  vCave->AddNode(vFDCarray, 1, new TGeoTranslation(0., 0., kPosFDC - kFDCCelldz / 2. - 0.23));
-  vCave->AddNode(vFDCarray, 2, new TGeoTranslation(0., 0., kPosFDC + kFDCCelldz / 2. + 0.23));
+  if (baseParam.isExperimental) {
+     float rmin = baseParam.rminC, rmax = baseParam.rmaxC;
+     auto vFDDC = buildModuleScint(rmin, rmax);
+     vFDDC->SetName("FDDC");
+     vCave->AddNode(vFDDC, 1, new TGeoTranslation(0., 0., Constants::zScintC));
+     int nsect = Constants::nSectScint;
+     for (int i = 0; i < nsect; i ++){
+       float rb = 0.5 * (rmin + rmax);
+       float theta = (2 * i + 1) * TMath::TwoPi() / nsect / 2;
+       auto bundleC = buildFiberBundle();
+       vCave->AddNode(bundleC, 1, new TGeoTranslation(rb * TMath::Cos(theta), rb * TMath::Sin(theta), Constants::zScintC - Constants::dzScint / 2 - Constants::lenFiber / 2 ));
+     }
+  } else {
+    const Float_t kPosFDC = -kZbegFrontBar - 2. - 3.0 - 0.3; // 3.0 = (5.6 + 0.2 + 0.2)/2.;
+    vCave->AddNode(vFDCarray, 1, new TGeoTranslation(0., 0., kPosFDC - kFDCCelldz / 2. - 0.23));
+    vCave->AddNode(vFDCarray, 2, new TGeoTranslation(0., 0., kPosFDC + kFDCCelldz / 2. + 0.23));
+  }
+}
+
+
+TGeoVolumeAssembly* Geometry::buildModuleScint(float rmin, float rmax)
+{
+  if (rmin >= rmax) {
+    LOG(fatal) << "rmin(" << rmin << ") should be less than rmax(" << rmax << "). Please check your input!";
+  }
+
+  auto mod = new TGeoVolumeAssembly("");
+
+  const TGeoMedium* medium = gGeoManager->GetMedium("FDD_Scintillator");
+
+  int nrings = Constants::nRingsScint, nsect = Constants::nSectScint;
+  float dz = Constants::dzScint;
+
+  LOG(info) << "Scintillator ring: from " << rmin << " to " << rmax;
+  for (int ic = 0; ic < nsect; ic++) {
+    int cellId = mChannelCounter++;
+    std::string nodeName = "fdd_node" + std::to_string(cellId);
+    float phi1 = ic * 360. / nsect;
+    float phi2 = (ic + 1) * 360. / nsect;
+    auto tbs = new TGeoTubeSeg("tbs", rmin, rmax, dz / 2, phi1, phi2);
+    auto node = new TGeoVolume(nodeName.c_str(), tbs, medium);
+    if (cellId < nrings * nsect) {
+      node->SetLineColor(ic % 2 == 0 ? kRed : kRed - 7);
+    } else {
+      node->SetLineColor(ic % 2 == 0 ? kBlue : kBlue - 7);
+    }
+    mod->AddNode(node, 1);
+  }
+
+  return mod;
+}
+
+TGeoVolumeAssembly* Geometry::buildFiberBundle()
+{
+  auto bundle = new TGeoVolumeAssembly("");
+  
+  const TGeoMedium* medium = gGeoManager->GetMedium("FDD_Fiber");
+
+  std::vector<std::pair<float, float>> xyFiber;
+  float dxy = 0.2; // fiber spacing
+
+  for (int i = 0; i < 196; i ++) {
+     int ir = i / 14,  ic = i % 14;
+     float x = - dxy * 7 + dxy * ir;
+     float y =   dxy * 7 - dxy * ic;
+     xyFiber.emplace_back(x, y);
+  }
+//  xyFiber.emplace_back(7.5 * dxy, 7.5 * dxy);
+//  xyFiber.emplace_back(7.5 * dxy, -7.5 * dxy);
+//  xyFiber.emplace_back(-7.5 * dxy, -7.5 * dxy);
+//  xyFiber.emplace_back(-7.5 * dxy, 7.5 * dxy);
+
+  int ii = 0;
+  for (auto& xyf : xyFiber) {
+    auto tube = new TGeoTube(Constants::rMinFiber, Constants::rMaxFiber, Constants::lenFiber / 2);
+    std::string nodeName = "fiber" + std::to_string(ii);
+    auto node = new TGeoVolume(nodeName.c_str(), tube, medium);
+    node->SetLineColor(kOrange + 3);
+    bundle->AddNode(node, 1, new TGeoTranslation(xyf.first, xyf.second, 0.f));
+    ii ++;
+  }
+
+  return bundle;
 }

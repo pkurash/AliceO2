@@ -84,19 +84,32 @@ void Detector::InitializeO2Detector()
 {
 
   TGeoVolume* vol;
+  
+  auto& baseParam = FDDBaseParam::Instance();
 
-  vol = gGeoManager->GetVolume("FDApad");
-  if (!vol) {
-    LOG(fatal) << "can't find volume FDApad";
+  if (baseParam.isExperimental) {
+    for (int ivol = 0; ivol < 2 * Constants::nSectScint * Constants::nRingsScint; ivol ++) {
+       std::string volumeName = "fdd_node" + std::to_string(ivol);
+       auto v  = (TGeoVolume*)gGeoManager->GetVolume(volumeName.c_str());
+       if (!v) {
+         LOG(fatal) << "volume " << volumeName << " not found!";
+       }
+       AddSensitiveVolume(v);
+    }
   } else {
-    AddSensitiveVolume(vol);
-  }
+     vol = gGeoManager->GetVolume("FDApad");
+     if (!vol) {
+       LOG(fatal) << "can't find volume FDApad";
+     } else {
+       AddSensitiveVolume(vol);
+     }
 
-  vol = gGeoManager->GetVolume("FDCpad");
-  if (!vol) {
-    LOG(fatal) << "can't find volume FDCpad";
-  } else {
-    AddSensitiveVolume(vol);
+     vol = gGeoManager->GetVolume("FDCpad");
+     if (!vol) {
+       LOG(fatal) << "can't find volume FDCpad";
+     } else {
+       AddSensitiveVolume(vol);
+     }
   }
 }
 
@@ -352,9 +365,71 @@ void Detector::CreateMaterials()
   o2::base::Detector::Medium(id, "Glass", id, 1, fieldType, maxField, tmaxfd, stemax, deemax, epsil, stmin);
 }
 //_____________________________________________________________________________
+void Detector::CreateExperimentalMaterials()
+{
+  int matId = 0;                  // tmp material id number
+  const int unsens = 0, sens = 1; // sensitive or unsensitive medium
+  int fieldType;
+  float maxField;
+
+  // EJ-204 scintillator, based on polyvinyltoluene
+  float aScint[2] = {1.00784, 12.0107};
+  float zScint[2] = {1, 6};
+  float wScint[2] = {0.07085, 0.92915}; // based on EJ-204 datasheet: n_atoms/cm3
+  const float dScint = 1.023;
+
+  // Radiator  glass SiO2
+  float aglass[2] = {28.0855, 15.9994};
+  float zglass[2] = {14., 8.};
+  float wglass[2] = {1., 2.};
+  const float dglass = 2.2;
+
+  // PMMA plastic mixture: (C5O2H8)n, same for plastic fiber support and for the fiber core
+  //   Fiber cladding is different, but it comprises only 3% of the fiber volume, so it is not included
+  const Int_t nPlast = 3;
+  Float_t aPlast[nPlast] = {1.00784, 12.0107, 15.999};
+  Float_t zPlast[nPlast] = {1, 6, 8};
+  Float_t wPlast[nPlast] = {0.08054, 0.59985, 0.31961};
+  const Float_t dPlast = 1.18;
+
+  o2::base::Detector::initFieldTrackingParams(fieldType, maxField);
+  // TODO: Comment out two lines below once tested that the above function assigns field type and max correctly
+  fieldType = 3;  // Field type
+  maxField = 5.0; // Field max.
+
+  float tmaxfd = -10.0;  // max deflection angle due to magnetic field in one step
+  float stepmax = 0.1;    // max step allowed [cm]
+  float deemax = 1.0;     // maximum fractional energy loss in one step 0<deemax<=1
+  float epsil = 0.03;     // tracking precision [cm]
+  float stepmin = -0.001; // minimum step due to continuous processes [cm] (negative value: choose it automatically)
+
+  o2::base::Detector::Mixture(++matId, "Scintillator", aScint, zScint, dScint, 2, wScint);
+  o2::base::Detector::Medium(Scintillator, "Scintillator", matId, sens, fieldType, maxField,
+                             tmaxfd, stepmax, deemax, epsil, stepmin);
+
+  // Cherenkov radiator glass, modify fieldType and maxField parameters
+  fieldType = 2;
+  maxField = 10.;
+
+  o2::base::Detector::Mixture(++matId, "Radiator optical glass", aglass, zglass, dglass, -2, wglass);
+  o2::base::Detector::Medium(RadiatorOpticalGlass, "OpticalGlass", matId, sens, fieldType, maxField,
+                             10., .01, .1, .003, .01);
+
+
+    o2::base::Detector::Mixture(++matId, "Fiber", aPlast, zPlast, /*dFiber*/ dPlast, nPlast, wPlast);
+    o2::base::Detector::Medium(Fiber, "Fiber", matId, unsens, fieldType, maxField,
+                               tmaxfd, stepmax, deemax, epsil, stepmin);
+}
+
+//_____________________________________________________________________________
 void Detector::ConstructGeometry()
 {
+  auto& baseParam = FDDBaseParam::Instance();
+  if (baseParam.isExperimental) {
+    CreateExperimentalMaterials();
+  } else {
   CreateMaterials();
+  }
   mGeometry = new Geometry(Geometry::eOnlySensitive);
 }
 //_____________________________________________________________________________
