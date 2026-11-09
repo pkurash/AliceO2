@@ -16,12 +16,17 @@ inline void GPUReconstructionMetal::runKernelBackend<GPUMemClean16, 0>(const krn
 {
   const uint64_t offset = static_cast<const uint8_t*>(ptr) - static_cast<const uint8_t*>(mDeviceMemoryBase);
   const uint64_t length = (size + 15ull) & ~15ull;
+  if (_xyz.z.evList) {
+    StreamWaitForEvents(_xyz.x.stream, _xyz.z.evList, _xyz.z.nEvents);
+  }
 
   id<MTLCommandBuffer> cb = mInternals->commandBuffers[_xyz.x.stream];
   id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+  metalBeginEncoder(mInternals, blit, _xyz.x.stream);
 
   [blit fillBuffer:mInternals->mem_gpu range:NSMakeRange(offset, length) value:0];
-  [blit endEncoding];
-
-  [cb commit];
+  metalEndEncoder(mInternals, blit, _xyz.x.stream);
+  if (_xyz.z.ev) {
+    RecordMarker(_xyz.z.ev, _xyz.x.stream);
+  }
 }

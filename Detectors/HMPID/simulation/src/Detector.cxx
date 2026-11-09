@@ -33,6 +33,7 @@
 #include "DetectorsBase/MaterialManager.h"
 
 #include "Framework/Logger.h"
+#include "DetectorsBase/SimRandom.h"
 
 namespace o2
 {
@@ -113,8 +114,6 @@ bool Detector::ProcessHits(FairVolume* v)
   } // photon hit PC
 
   // Treat charged particles
-  static Float_t eloss; // need to store mip parameters between different steps
-  static Double_t in[3];
 
   if (fMC->IsTrackEntering() && fMC->TrackCharge() && (volID == mHpad0VolID || volID == mHpad1VolID || volID == mHpad2VolID || volID == mHpad3VolID || volID == mHpad4VolID || volID == mHpad5VolID || volID == mHpad6VolID)) {
     // Trackref stored when entering in the pad volume
@@ -127,18 +126,18 @@ bool Detector::ProcessHits(FairVolume* v)
   if (fMC->TrackCharge() && (volID == mHcel0VolID || volID == mHcel1VolID || volID == mHcel2VolID || volID == mHcel3VolID || volID == mHcel4VolID || volID == mHcel5VolID || volID == mHcel6VolID)) {
     // charged particle in amplification gap (Hcel)
     if (fMC->IsTrackEntering() || fMC->IsNewTrack()) {                                     // entering or newly created
-      eloss = 0;                                                                           // reset Eloss collector
-      fMC->TrackPosition(in[0], in[1], in[2]);                                             // take position at the entrance
+      mMipEloss = 0;                                                                       // reset Eloss collector
+      fMC->TrackPosition(mMipEntry[0], mMipEntry[1], mMipEntry[2]);                        // take position at the entrance
     } else if (fMC->IsTrackExiting() || fMC->IsTrackStop() || fMC->IsTrackDisappeared()) { // exiting or disappeared
-      eloss += fMC->Edep();                                                                // take into account last step Eloss
+      mMipEloss += fMC->Edep();                                                            // take into account last step Eloss
       Int_t tid = fMC->GetStack()->GetCurrentTrackNumber();                                // take TID
       Int_t pid = fMC->TrackPid();                                                         // take PID
       Double_t out[3];
       fMC->TrackPosition(out[0], out[1], out[2]);  // take MARS position at exit
       Float_t hitTime = (Float_t)fMC->TrackTime(); // hit formation time
-      out[0] = 0.5 * (out[0] + in[0]);             //
-      out[1] = 0.5 * (out[1] + in[1]);             // take hit position at the anod plane
-      out[2] = 0.5 * (out[2] + in[2]);
+      out[0] = 0.5 * (out[0] + mMipEntry[0]);      //
+      out[1] = 0.5 * (out[1] + mMipEntry[1]);      // take hit position at the anod plane
+      out[2] = 0.5 * (out[2] + mMipEntry[2]);
       Int_t idch; // chamber number
       if (volID == mHcel0VolID) {
         idch = 0;
@@ -157,16 +156,16 @@ bool Detector::ProcessHits(FairVolume* v)
       }
       Double_t xl, yl;
       o2::hmpid::Param::instance()->mars2Lors(idch, out, xl, yl); // take LORS position
-      if (eloss > 0) {
+      if (mMipEloss > 0) {
         // HIT for MIP, position near anod plane, eloss will be set to Q
-        AddHit(out[0], out[1], out[2], hitTime, eloss, tid, idch);
-        GenFee(eloss); // generate feedback photons
+        AddHit(out[0], out[1], out[2], hitTime, mMipEloss, tid, idch);
+        GenFee(mMipEloss); // generate feedback photons
         stack->addHit(GetDetId());
-        eloss = 0;
+        mMipEloss = 0;
       }
     } else {
       // just going inside
-      eloss += fMC->Edep(); // collect this step eloss
+      mMipEloss += fMC->Edep(); // collect this step eloss
     }
     return kTRUE;
   } // MIP in GAP
@@ -187,14 +186,14 @@ void Detector::GenFee(Float_t qtot)
   // eloss=0 means photon so only pulse height distribution is to be analysed.
   TLorentzVector x4;
   fMC->TrackPosition(x4);
-  Int_t iNphotons = fMC->GetRandom()->Poisson(0.02 * qtot); // # of feedback photons is proportional to the charge of hit
+  Int_t iNphotons = o2::base::simRandom()->Poisson(0.02 * qtot); // # of feedback photons is proportional to the charge of hit
   // AliDebug(1,Form("N photons=%i",iNphotons));
   Int_t j;
   Float_t cthf, phif, enfp = 0, sthf, e1[3], e2[3], e3[3], vmod, uswop, dir[3], phi, pol[3], mom[4];
   // Generate photons
   for (Int_t i = 0; i < iNphotons; i++) { // feedbacks loop
     Double_t ranf[2];
-    fMC->GetRandom()->RndmArray(2, ranf); // Sample direction
+    o2::base::simRandom()->RndmArray(2, ranf); // Sample direction
     cthf = ranf[0] * 2 - 1.0;
     if (cthf < 0) {
       continue;
@@ -202,7 +201,7 @@ void Detector::GenFee(Float_t qtot)
     sthf = TMath::Sqrt((1. - cthf) * (1. + cthf));
     phif = ranf[1] * 2 * TMath::Pi();
 
-    if (Double_t randomNumber = fMC->GetRandom()->Rndm() <= 0.57) {
+    if (Double_t randomNumber = o2::base::simRandom()->Rndm() <= 0.57) {
       enfp = 7.5e-9;
     } else if (randomNumber <= 0.7) {
       enfp = 6.4e-9;
@@ -270,7 +269,7 @@ void Detector::GenFee(Float_t qtot)
       e2[j] *= vmod;
     }
 
-    phi = fMC->GetRandom()->Rndm() * 2 * TMath::Pi();
+    phi = o2::base::simRandom()->Rndm() * 2 * TMath::Pi();
     for (j = 0; j < 3; j++) {
       pol[j] = e1[j] * TMath::Sin(phi) + e2[j] * TMath::Cos(phi);
     }
@@ -295,7 +294,7 @@ Bool_t Detector::IsLostByFresnel()
   Double_t localTc = localMom[0] * localMom[0] + localMom[2] * localMom[2];
   Double_t localTheta = TMath::ATan2(TMath::Sqrt(localTc), localMom[1]);
   Double_t cotheta = TMath::Abs(TMath::Cos(localTheta));
-  if (fMC->GetRandom()->Rndm() < Fresnel(p4.E() * 1e9, cotheta, 1)) {
+  if (o2::base::simRandom()->Rndm() < Fresnel(p4.E() * 1e9, cotheta, 1)) {
     // AliDebug(1,"Photon lost");
     return kTRUE;
   } else {

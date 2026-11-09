@@ -15,18 +15,68 @@
 #include "GPUDefParametersLoad.inc"
 #include "GPUReconstructionMetal.h"
 
+#include <chrono>
 #include <cstddef>
 #include <map>
 
+#include <IOKit/IOKitLib.h>
 #include <mach-o/dyld.h>
 #include <mach-o/getsect.h>
 #include <mach-o/ldsyms.h>  // _mh_execute_header
+#include <sys/mman.h>
+#include <unistd.h>
 
 #define GPUErrorReturn(...) \
   {                         \
     GPUError(__VA_ARGS__);  \
     return (1);             \
   }
+
+namespace
+{
+// Metal does not report the number of GPU cores, but the IORegistry entry of
+// an Apple silicon GPU does. 0 if it is not there.
+uint32_t metalGPUCoreCount()
+{
+  uint32_t n = 0;
+  io_service_t service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AGXAccelerator"));
+  if (service) {
+    CFTypeRef p = IORegistryEntrySearchCFProperty(service, kIOServicePlane, CFSTR("gpu-core-count"), kCFAllocatorDefault, kIORegistryIterateRecursively);
+    if (p) {
+      if (CFGetTypeID(p) == CFNumberGetTypeID()) {
+        CFNumberGetValue((CFNumberRef)p, kCFNumberSInt32Type, &n);
+      }
+      CFRelease(p);
+    }
+    IOObjectRelease(service);
+  }
+  return n;
+}
+
+// A shared buffer around anonymous memory rather than one Metal allocates. After
+// the GPU has been idle for a few seconds, the first command buffer waits until
+// the driver has made the memory pools resident again, which for 6 GB takes about
+// 75 ms instead of 125 ms on an M1 Max, and the full system test idles between
+// all its time frames.
+id<MTLBuffer> metalNewSharedBuffer(id<MTLDevice> device, size_t size)
+{
+  const size_t length = (size + getpagesize() - 1) & ~(size_t)(getpagesize() - 1);
+  void* p = mmap(nullptr, length, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
+  if (p == MAP_FAILED) {
+    return nil;
+  }
+  id<MTLBuffer> buffer = [device newBufferWithBytesNoCopy:p
+                                                   length:length
+                                                  options:MTLResourceStorageModeShared | MTLResourceHazardTrackingModeUntracked
+                                              deallocator:^(void* ptr, NSUInteger l) {
+                                                munmap(ptr, l);
+                                              }];
+  if (buffer == nil) {
+    munmap(p, length);
+  }
+  return buffer;
+}
+}  // namespace
 
 #include "utils/qGetLdBinarySymbols.h"
 QGET_LD_BINARY_SYMBOLS(GPUReconstructionMetalCode_src);
@@ -74,6 +124,14 @@ int32_t GPUReconstructionMetal::InitDevice_Runtime()
     mDeviceName = device_name.c_str();
     // Basically a random number for now.
     mMaxBackendThreads = 1000;
+    // The automatic grids are minBlocks per core; with the default of 1 they
+    // left all but one core idle.
+    mMultiprocessorCount = metalGPUCoreCount();
+    if (mMultiprocessorCount == 0) {
+      GPUWarning("Could not read the number of GPU cores, assuming 1");
+      mMultiprocessorCount = 1;
+    }
+    mMaxBackendThreads = std::max<int32_t>(mMaxBackendThreads, deviceMaxWorkGroup.width * mMultiprocessorCount);
 
     if (GetMetalPrograms()) {
       return 1;
@@ -84,14 +142,14 @@ int32_t GPUReconstructionMetal::InitDevice_Runtime()
     }
 
     // We only support internal GPUs, so the ownership of the memory is always shared
-    mInternals->mem_gpu = [mInternals->device newBufferWithLength:mDeviceMemorySize options:MTLResourceStorageModeShared];
+    mInternals->mem_gpu = metalNewSharedBuffer(mInternals->device, mDeviceMemorySize);
     if (mInternals->mem_gpu == nil) {
       GPUErrorReturn("Metal Memory Allocation Error");
     }
 
     // FIXME: until I understand how to enable the gGPUConstantMemBufferSize constexpr
     int32_t tmpGPUConstantMemBufferSize = 100000;  // gGPUConstantMemBufferSize
-    mInternals->mem_constant = [mInternals->device newBufferWithLength:tmpGPUConstantMemBufferSize options:MTLResourceStorageModeShared];
+    mInternals->mem_constant = [mInternals->device newBufferWithLength:tmpGPUConstantMemBufferSize options:MTLResourceStorageModeShared | MTLResourceHazardTrackingModeUntracked];
     if (mInternals->mem_constant == nil) {
       GPUErrorReturn("Metal Constant Memory Allocation Error");
     }
@@ -105,9 +163,13 @@ int32_t GPUReconstructionMetal::InitDevice_Runtime()
       if (mInternals->commandBuffers[i] == nil) {
         GPUErrorReturn("Error creating Metal command buffer");
       }
+      mInternals->streamOrder[i] = [mInternals->device newSharedEvent];
+      mInternals->streamOrderValue[i] = 0;
+      mInternals->streamFence[i] = [mInternals->device newFence];
+      mInternals->streamHasWork[i] = false;
     }
 
-    mInternals->mem_host = [mInternals->device newBufferWithLength:mHostMemorySize options:MTLResourceStorageModeShared];
+    mInternals->mem_host = metalNewSharedBuffer(mInternals->device, mHostMemorySize);
     if (mInternals->mem_host == nil) {
       GPUErrorReturn("Error allocating pinned host memory");
     }
@@ -137,7 +199,12 @@ int32_t GPUReconstructionMetal::InitDevice_Runtime()
 
   for (uint32_t i = 0; i < mEvents.size(); i++) {
     auto* events = (id<MTLSharedEvent>*)mEvents[i].data();
-    new (events) id<MTLSharedEvent>[ mEvents[i].size() ];
+    for (uint32_t j = 0; j < mEvents[i].size(); j++) {
+      events[j] = [mInternals->device newSharedEvent];
+      if (events[j] == nil) {
+        GPUErrorReturn("Error creating Metal event");
+      }
+    }
   }
 
   return (0);
@@ -147,6 +214,13 @@ int32_t GPUReconstructionMetal::ExitDevice_Runtime()
 {
   // Tear down Metal
   SynchronizeGPU();
+
+  for (uint32_t i = 0; i < mEvents.size(); i++) {
+    auto* events = (id<MTLSharedEvent>*)mEvents[i].data();
+    for (uint32_t j = 0; j < mEvents[i].size(); j++) {
+      [events[j] release];
+    }
+  }
 
   if (mMaster == nullptr) {
     if (mDeviceMemoryBase) {
@@ -167,6 +241,8 @@ int32_t GPUReconstructionMetal::ExitDevice_Runtime()
         DrainStream(i);
         [mInternals->commandBuffers[i] release];
         [mInternals->commandQueues[i] release];
+        [mInternals->streamOrder[i] release];
+        [mInternals->streamFence[i] release];
       }
       [mInternals->mem_host release];
     }
@@ -220,6 +296,9 @@ size_t GPUReconstructionMetal::GPUMemCpy(void* dst, const void* src, size_t size
   }
 
   auto realStream = stream == -1 ? 0 : stream;
+  if (nEvents) {
+    StreamWaitForEvents(realStream, evList, nEvents);
+  }
   const MetalMemRef s = metalResolve(mInternals, src, mHostMemoryBase, mHostMemorySize, mDeviceMemoryBase, mDeviceMemorySize);
   const MetalMemRef d = metalResolve(mInternals, dst, mHostMemoryBase, mHostMemorySize, mDeviceMemoryBase, mDeviceMemorySize);
 
@@ -232,13 +311,16 @@ size_t GPUReconstructionMetal::GPUMemCpy(void* dst, const void* src, size_t size
   } else {
     id<MTLCommandBuffer> cb = mInternals->commandBuffers[realStream];
     id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+    metalBeginEncoder(mInternals, blit, realStream);
     [blit copyFromBuffer:s.buffer
             sourceOffset:s.offset
                 toBuffer:d.buffer
        destinationOffset:d.offset
                     size:sizeBytes];
-    [blit endEncoding];
-    CommitStream(realStream);
+    metalEndEncoder(mInternals, blit, realStream);
+  }
+  if (ev) {
+    RecordMarker(ev, realStream);
   }
 
   if (GetProcessingSettings().serializeGPU & 2) {
@@ -262,13 +344,16 @@ size_t GPUReconstructionMetal::WriteToConstantMemory(size_t offset, const void* 
   } else {
     id<MTLCommandBuffer> cb = mInternals->commandBuffers[realStream];
     id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+    metalBeginEncoder(mInternals, blit, realStream);
     [blit copyFromBuffer:s.buffer
             sourceOffset:s.offset
                 toBuffer:mInternals->mem_constant
        destinationOffset:offset
                     size:size];
-    [blit endEncoding];
-    CommitStream(realStream);
+    metalEndEncoder(mInternals, blit, realStream);
+  }
+  if (ev) {
+    RecordMarker(ev, realStream);
   }
 
   if (GetProcessingSettings().serializeGPU & 2) {
@@ -279,10 +364,14 @@ size_t GPUReconstructionMetal::WriteToConstantMemory(size_t offset, const void* 
 
 void GPUReconstructionMetal::ReleaseEvent(deviceEvent ev)
 {
-  // FIXME: is this supposed to reset the event for it to be repurposed
-  //        or to decrease the ref count?
-  auto mtlEvent = (__bridge id<MTLSharedEvent>)(ev.get<void*>());
-  [mtlEvent setSignaledValue:0];
+  // Nothing to do, as in CUDA: the next RecordMarker supersedes the last one.
+}
+
+uint64_t GPUReconstructionMetal::EventValue(deviceEvent ev, bool next)
+{
+  std::lock_guard<std::mutex> lock(mInternals->eventMutex);
+  auto& value = mInternals->eventValues[ev.get<void*>()];
+  return next ? ++value : value;
 }
 
 void GPUReconstructionMetal::RecordMarker(deviceEvent* ev, int32_t stream)
@@ -291,26 +380,53 @@ void GPUReconstructionMetal::RecordMarker(deviceEvent* ev, int32_t stream)
   // Does not change the retain count, so it's important we manage
   // the lifetime of the events outside here.
   auto mtlEvent = (__bridge id<MTLSharedEvent>)(ev->get<void*>());
-  [cb encodeSignalEvent:mtlEvent value:1];
+  [cb encodeSignalEvent:mtlEvent value:EventValue(*ev, true)];
   CommitStream(stream);
 }
 
 void GPUReconstructionMetal::CommitStream(int32_t stream)
 {
   id<MTLCommandBuffer> cb = mInternals->commandBuffers[stream];
+  // A CUDA stream runs its work in order, a Metal queue only as far as its
+  // hazard tracking sees, and the kernels reach most memory through addresses
+  // in constant memory. So each buffer of a stream waits for the previous one.
+  const uint64_t value = ++mInternals->streamOrderValue[stream];
+  [cb encodeSignalEvent:mInternals->streamOrder[stream] value:value];
   [cb commit];
   // Hand the committed buffer over to the stream's submission list, which owns
   // it until it is waited for, and open a fresh one to encode the next work in.
   mInternals->submittedBuffers[stream].emplace_back(cb);
+  mInternals->streamHasWork[stream] = false;
   mInternals->commandBuffers[stream] = [[mInternals->commandQueues[stream] commandBuffer] retain];
+  [mInternals->commandBuffers[stream] encodeWaitForEvent:mInternals->streamOrder[stream] value:value];
 }
 
 void GPUReconstructionMetal::DrainStream(int32_t stream)
 {
+  // Hand the GPU what the other streams have encoded too, so it has work
+  // while the host waits and then works on what it waited for.
+  for (int32_t i = 0; i < mNStreams; i++) {
+    if (mInternals->streamHasWork[i]) {
+      CommitStream(i);
+    }
+  }
   // Waiting on the buffer that is currently open would block forever: it is not
   // committed, so it never completes. Only what was submitted can be waited for.
+  // The last submitted buffer ends by signalling the stream's order event, once
+  // all the work before it is done. Watching the event returns sooner than
+  // waitUntilCompleted, which sleeps until the completion has been processed.
+  // Only short waits are worth a busy core, so give up after a while.
+  bool done = false;
+  const auto t0 = std::chrono::steady_clock::now();
+  while (!mInternals->submittedBuffers[stream].empty() && !(done = mInternals->streamOrder[stream].signaledValue >= mInternals->streamOrderValue[stream]) && std::chrono::steady_clock::now() - t0 < std::chrono::milliseconds(20)) {
+  }
   for (id<MTLCommandBuffer> cb : mInternals->submittedBuffers[stream]) {
-    [cb waitUntilCompleted];
+    if (!done) {
+      [cb waitUntilCompleted];
+    }
+    if (cb.status == MTLCommandBufferStatusError) {
+      GPUError("Metal command buffer on stream %d failed: %s", stream, [[cb.error description] UTF8String]);
+    }
     [cb release];
   }
   mInternals->submittedBuffers[stream].clear();
@@ -341,7 +457,9 @@ void GPUReconstructionMetal::StreamWaitForEvents(int32_t stream, deviceEvent* ev
   id<MTLCommandBuffer> cb = mInternals->commandBuffers[stream];
   for (int32_t ei = 0; ei < nEvents; ei++) {
     auto mtlEvent = (__bridge id<MTLSharedEvent>)(evList[ei].get<void*>());
-    [cb encodeWaitForEvent:mtlEvent value:1];
+    if (const uint64_t value = EventValue(evList[ei], false)) {
+      [cb encodeWaitForEvent:mtlEvent value:value];
+    }
   }
   CommitStream(stream);
   DrainStream(stream);
@@ -351,7 +469,7 @@ bool GPUReconstructionMetal::IsEventDone(deviceEvent* evList, int32_t nEvents)
 {
   for (int32_t i = 0; i < nEvents; i++) {
     auto mtlEvent = (__bridge id<MTLSharedEvent>)(evList[i].get<void*>());
-    if (mtlEvent.signaledValue == 0) {
+    if (mtlEvent.signaledValue < EventValue(evList[i], false)) {
       return false;
     }
   }

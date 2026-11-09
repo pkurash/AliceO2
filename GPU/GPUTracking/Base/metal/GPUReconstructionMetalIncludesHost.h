@@ -32,6 +32,8 @@ using half = _Float16;
 #include <vector>
 #include <string>
 #include <memory>
+#include <mutex>
+#include <unordered_map>
 #include "GPULogging.h"
 
 #include "GPUReconstructionMetal.h"
@@ -57,6 +59,13 @@ struct GPUReconstructionMetalInternals {
   // encoded into afterwards, so the two cannot be the same object.
   std::array<id<MTLCommandBuffer>, constants::GPU_MAX_STREAMS> commandBuffers;
   std::array<std::vector<id<MTLCommandBuffer>>, constants::GPU_MAX_STREAMS> submittedBuffers;
+  // Signalled by each committed buffer and waited for by the next one, see CommitStream
+  std::array<id<MTLSharedEvent>, constants::GPU_MAX_STREAMS> streamOrder;
+  std::array<uint64_t, constants::GPU_MAX_STREAMS> streamOrderValue;
+  // Orders the encoders within the open command buffer of a stream, which
+  // collects the stream's work until something has to wait for it.
+  std::array<id<MTLFence>, constants::GPU_MAX_STREAMS> streamFence;
+  std::array<bool, constants::GPU_MAX_STREAMS> streamHasWork;
 
   std::vector<id<MTLFunction>> functions;
   std::vector<id<MTLComputePipelineState>> pipelines;
@@ -67,7 +76,27 @@ struct GPUReconstructionMetalInternals {
   id<MTLBuffer> mem_host;
 
   id<MTLLibrary> library;
+
+  // The value each event was last recorded with. An MTLSharedEvent only counts
+  // up, so recording signals the next value and waiting asks for the last one,
+  // which makes waiting for a never recorded event a no-op, as in CUDA.
+  std::unordered_map<void*, uint64_t> eventValues;
+  std::mutex eventMutex;
 };
+// An encoder of a stream starts after the previous one of the same stream and
+// leaves its work in the open command buffer.
+template <class E>
+inline void metalBeginEncoder(GPUReconstructionMetalInternals* internals, E encoder, int32_t stream)
+{
+  [encoder waitForFence:internals->streamFence[stream]];
+}
+template <class E>
+inline void metalEndEncoder(GPUReconstructionMetalInternals* internals, E encoder, int32_t stream)
+{
+  [encoder updateFence:internals->streamFence[stream]];
+  [encoder endEncoding];
+  internals->streamHasWork[stream] = true;
+}
 } // namespace o2::gpu
 
 #endif // GPURECONSTRUCTIONOMETALINCLUDESHOST_H

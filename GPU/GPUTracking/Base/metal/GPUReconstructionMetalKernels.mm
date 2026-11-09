@@ -25,9 +25,14 @@ inline void GPUReconstructionMetal::runKernelBackend(const krnlSetupTime& _xyz, 
   const uint32_t num = GetKernelNum<T, I>();
   auto& kExec = _xyz.x;
   auto& runRange = _xyz.y;
+  auto& kEvents = _xyz.z;
+  if (kEvents.evList) {
+    StreamWaitForEvents(kExec.stream, kEvents.evList, kEvents.nEvents);
+  }
 
   id<MTLComputePipelineState> pso = mInternals->pipelines[num];
   id<MTLComputeCommandEncoder> computeEncoder = [mInternals->commandBuffers[kExec.stream] computeCommandEncoder];
+  metalBeginEncoder(mInternals, computeEncoder, kExec.stream);
 
   // Slots 0 to 2 are what GPUCA_KRNL_BUFFERS and GPUCA_KRNL_SECTOR_ARG declare
   // in the generated signature; the kernel's own arguments follow from slot 3.
@@ -47,10 +52,10 @@ inline void GPUReconstructionMetal::runKernelBackend(const krnlSetupTime& _xyz, 
   }
   [computeEncoder dispatchThreadgroups:MTLSizeMake(kExec.nBlocks, 1, 1)
                  threadsPerThreadgroup:MTLSizeMake(threadGroupSize, 1, 1)];
-  // Without ending the encoder the next one on this buffer is rejected, and
-  // without committing the kernel never reaches the device.
-  [computeEncoder endEncoding];
-  CommitStream(kExec.stream);
+  metalEndEncoder(mInternals, computeEncoder, kExec.stream);
+  if (kEvents.ev) {
+    RecordMarker(kEvents.ev, kExec.stream);
+  }
 }
 
 template <class T, int32_t I>
@@ -64,17 +69,24 @@ int32_t GPUReconstructionMetal::AddKernel()
     return 1;
   }
 
+  // The kernel sizes its threadgroup memory from the tuning table at compile
+  // time, so a launch must not exceed what it was built for either way.
+  const uint32_t tunedThreads = this->template getKernelProperties<T, I>().nThreads;
+
+  // Like __launch_bounds__: without it the register allocation may leave room
+  // for fewer threads than the kernel is tuned for.
+  MTLComputePipelineDescriptor* desc = [MTLComputePipelineDescriptor new];
+  desc.computeFunction = krnl;
+  desc.maxTotalThreadsPerThreadgroup = tunedThreads;
   NSError* error = nil;
-  id<MTLComputePipelineState> pso = [mInternals->device newComputePipelineStateWithFunction:krnl error:&error];
+  id<MTLComputePipelineState> pso = [mInternals->device newComputePipelineStateWithDescriptor:desc options:MTLPipelineOptionNone reflection:nil error:&error];
+  [desc release];
   if (pso == nil) {
     NSLog(@"%@", error);
     GPUError("Error creating Metal pipeline state: %s", [kname cStringUsingEncoding:NSUTF8StringEncoding]);
     return 1;
   }
 
-  // The kernel sizes its threadgroup memory from the tuning table at compile
-  // time, so a launch must not exceed what it was built for either way.
-  const uint32_t tunedThreads = this->template getKernelProperties<T, I>().nThreads;
   if (tunedThreads > pso.maxTotalThreadsPerThreadgroup) {
     // Fewer threads than the kernel was built for: safe for the shared arrays,
     // but the scan and compaction kernels assume every slot has an owner.

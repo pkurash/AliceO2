@@ -17,8 +17,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_MODULE_PATH})
 
 # Required packages
 #
-# Order is not completely irrelevant. For instance arrow must come before
-# FairRoot (see FindFairRoot.cmake)
+# Order is not completely irrelevant.
 #
 # Generally speaking we should prefer the CONFIG variant of the find_package. We
 # explicitely don't use the CONFIG variant (i.e. we do use the MODULE variant)
@@ -168,9 +167,6 @@ set_package_properties(Boost PROPERTIES TYPE REQUIRED)
 find_package(FairLogger CONFIG)
 set_package_properties(FairLogger PROPERTIES TYPE REQUIRED)
 
-find_package(FairRoot MODULE)
-set_package_properties(FairRoot PROPERTIES TYPE REQUIRED)
-
 find_package(Microsoft.GSL CONFIG)
 set_package_properties(Microsoft.GSL
                        PROPERTIES
@@ -203,6 +199,14 @@ set_package_properties(RapidJSON PROPERTIES TYPE REQUIRED)
 
 find_package(CURL)
 set_package_properties(CURL PROPERTIES TYPE REQUIRED)
+
+# Codecs for the ROOT-free AOD reader (Framework/AODNative)
+find_package(ZLIB)
+set_package_properties(ZLIB PROPERTIES TYPE REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(zstd REQUIRED IMPORTED_TARGET libzstd)
+pkg_check_modules(lz4 REQUIRED IMPORTED_TARGET liblz4)
+pkg_check_modules(lzma REQUIRED IMPORTED_TARGET liblzma)
 
 find_package(TBB)
 set_package_properties(TBB PROPERTIES TYPE REQUIRED)

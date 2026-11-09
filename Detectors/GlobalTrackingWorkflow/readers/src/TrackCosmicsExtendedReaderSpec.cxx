@@ -42,7 +42,6 @@ void TrackCosmicsExtendedReader::run(ProcessingContext& pc)
     LOG(info) << "no entry to read, publishing empty output";
     mCosmics.clear();
     mTFInfo = {};
-    mTFID = {};
   } else {
     mTree->GetEntry(ent);
   }
@@ -50,8 +49,6 @@ void TrackCosmicsExtendedReader::run(ProcessingContext& pc)
 
   pc.outputs().snapshot(Output{"GLO", "COSMFULL", 0}, mCosmics);
   pc.outputs().snapshot(Output{"GLO", "COSMFULLTF", 0}, mTFInfo);
-  pc.outputs().snapshot(Output{"GLO", "COSMFULLTFID", 0}, mTFID);
-
   if (noEntry || mTree->GetReadEntry() + 1 >= mTree->GetEntries()) {
     pc.services().get<ControlService>().endOfStream();
     pc.services().get<ControlService>().readyToQuit(QuitRequest::Me);
@@ -71,7 +68,6 @@ void TrackCosmicsExtendedReader::connectTree(const std::string& filename)
   }
   mTree->SetBranchAddress("cosmics", &mCosmicsPtr);
   mTree->SetBranchAddress("tfInfo", &mTFInfoPtr);
-  mTree->SetBranchAddress("tfID", &mTFIDPtr);
   LOG(info) << "Loaded tree from " << filename << " with " << mTree->GetEntries() << " entries";
 }
 
@@ -80,7 +76,6 @@ DataProcessorSpec getTrackCosmicsExtendedReaderSpec()
   std::vector<OutputSpec> outputs;
   outputs.emplace_back("GLO", "COSMFULL", 0, Lifetime::Timeframe);
   outputs.emplace_back("GLO", "COSMFULLTF", 0, Lifetime::Timeframe);
-  outputs.emplace_back("GLO", "COSMFULLTFID", 0, Lifetime::Timeframe);
 
   return DataProcessorSpec{
     "cosmic-ext-reader",
