@@ -17,6 +17,8 @@
 
 #include "GPUCommonDef.h"
 #include "../utils/vecpod.h"
+#include <span>
+#include <string>
 #include <array>
 #include <cstddef>
 #include <memory>
@@ -39,8 +41,6 @@ class GPUDisplayBackend
   virtual ~GPUDisplayBackend();
 
   virtual int32_t ExtInit() { return 0; };
-  virtual bool CoreProfile() { return false; };
-  virtual uint32_t DepthBits() = 0;
 
   typedef std::tuple<uint32_t, uint32_t, int32_t> vboList;
 
@@ -101,7 +101,10 @@ class GPUDisplayBackend
   const char* backendName() const { return mBackendName; }
   virtual void resizeScene(uint32_t width, uint32_t height) {}
   virtual size_t needMultiVBO() { return 0; }
-  virtual void OpenGLPrint(const char* s, float x, float y, float* color, float scale) = 0;
+  virtual void GLPrintText(const char* s, float x, float y, float* color, float scale, uint32_t nCharacters) = 0;                                        // nCharacters > 0: at most that many characters, otherwise until the terminating 0
+  virtual void GLDrawQuad(const float (&corners)[4][2], const float* color) = 0;                                                                         // Filled quad with the corners counterclockwise, in pixels with y from the bottom, drawn with the text (SOLID_GLYPH)
+  void GLDrawLine(float x0, float y0, float x1, float y1, float width, const float* color);                                                              // As GLDrawQuad
+  uint32_t GLDrawConsole(float verticalFraction, std::span<const std::string> previous, const std::string& current, int32_t cursorPos, uint32_t scroll); // Console over the top verticalFraction of the window: current text in the lowest line, previous ones above (last one lowest, the last scroll ones skipped), cursor underline at cursorPos (< 0: none); returns the number of previous lines that fit
   static GPUDisplayBackend* getBackend(const char* type);
   std::vector<char> getPixels();
   virtual float getYFactor() const { return 1.0f; }
@@ -121,8 +124,9 @@ class GPUDisplayBackend
   std::vector<int32_t> mIndirectSectorOffset;
   vecpod<DrawArraysIndirectCommand> mCmdBuffer;
   bool mFreetypeInitialized = false;
-  float mFontRasterScale = 1.f; // Display scale the font was rasterized for
-  bool mFrontendCompatTextDraw = false;
+  float mFontRasterScale = 1.f;               // Display scale the font was rasterized for
+  static constexpr int32_t SOLID_GLYPH = 128; // Fully opaque glyph after the characters (0 - 127), for quads drawn with the text
+  float mFontCharWidth = 0.f;                 // Advance of a character of the (monospace) font in logical pixels, 0 without Freetype font
   std::vector<char> mScreenshotPixels;
 
   static constexpr float SMOOTH_POINT_EXTRA_SIZE = 0.6f;

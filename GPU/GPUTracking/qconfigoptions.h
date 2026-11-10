@@ -12,6 +12,28 @@
 /// \file qconfigoptions.h
 /// \author David Rohr
 
-#include "GPUSettings.h" // Usually we are included from GPUSettings.h, so this doesn't do anything.
-                         // But ROOT or qconfig.cpp will include us directly, so load the settings first.
+// clang-format off
+#if !defined(QCONFIGOPTIONS_H_LIST) || defined(QCONFIG_INTERNAL)
+#define QCONFIGOPTIONS_H_LIST
 #include "GPUSettingsList.h"
+#endif
+
+#if ((defined(GPUSETTINGS_DISPLAY) || defined(GPUSETTINGS_ALL)) && !defined(QCONFIGOPTIONS_H_DISPLAY)) || defined(QCONFIG_INTERNAL)
+#define QCONFIGOPTIONS_H_DISPLAY
+#include "GPUSettingsListDisplay.h"
+#endif
+
+#if ((defined(GPUSETTINGS_PARAM) || defined(GPUSETTINGS_ALL)) && !defined(QCONFIGOPTIONS_H_PARAM)) || defined(QCONFIG_INTERNAL)
+#define QCONFIGOPTIONS_H_PARAM
+#include "GPUSettingsParam.h"
+#endif
+
+#if ((defined(GPUSETTINGS_DISPLAYCONTROL) || defined(GPUSETTINGS_ALL)) && !defined(QCONFIGOPTIONS_H_DISPLAYCONTROL)) || (defined(QCONFIG_INTERNAL) && !defined(QCONFIG_PRINT_RTC))
+#define QCONFIGOPTIONS_H_DISPLAYCONTROL
+#include "display/GPUDisplayControl.h"
+#endif
+
+#if ((defined(GPUSETTINGS_STANDALONE) || defined(GPUSETTINGS_ALL)) && !defined(QCONFIGOPTIONS_H_STANDALONE)) || defined(QCONFIG_INTERNAL)
+#define QCONFIGOPTIONS_H_STANDALONE
+#include "GPUSettingsListStandalone.h"
+#endif

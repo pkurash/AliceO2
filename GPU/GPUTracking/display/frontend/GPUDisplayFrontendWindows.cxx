@@ -219,6 +219,12 @@ BOOL CreateGLWindow(char* title, int32_t width, int32_t height, int32_t bits, bo
 
 int32_t GetKey(int32_t key)
 {
+  if (key == VK_BACK) {
+    return (GPUDisplayFrontendKeyVars::KEY_BACKSPACE);
+  }
+  if (key == VK_DELETE) {
+    return (GPUDisplayFrontendKeyVars::KEY_DELETE);
+  }
   if (key == 107 || key == 187) {
     return ('+');
   }
@@ -257,16 +263,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
       PostQuitMessage(0);
       return 0;
 
-    case WM_KEYDOWN: // Is A Key Being Held Down?
-      wParam = GetKey(wParam);
-      mKeys[wParam] = TRUE;
-      mKeysShift[wParam] = mKeys[KEY_SHIFT];
+    case WM_KEYDOWN:                                                   // Is A Key Being Held Down?
+      wParam = ((lParam >> 16) & 0xFF) == 0x29 ? '^' : GetKey(wParam); // Scan code of the key left of 1: console key, independent of the layout
+      mKeys[wParam] = wParam == KEY_SHIFT || !consoleShown();          // Held keys only without console, SHIFT also with it (scrolling)
       HandleKey(wParam);
       return 0;
 
     case WM_KEYUP:
-      wParam = GetKey(wParam);
-      mKeysShift[wParam] = false;
+      wParam = ((lParam >> 16) & 0xFF) == 0x29 ? '^' : GetKey(wParam);
       mKeys[wParam] = false;
       GPUInfo("Key: %d", wParam);
       return 0;
@@ -295,6 +299,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
     case WM_RBUTTONUP:
       mMouseDnR = false;
+      return 0;
+
+    case WM_MBUTTONDOWN:
+      mMouseDnX = GET_X_LPARAM(lParam);
+      mMouseDnY = GET_Y_LPARAM(lParam);
+      mMouseDnM = true;
+      GetCursorPos(&mouseCursorPos);
+      return 0;
+
+    case WM_MBUTTONUP:
+      mMouseDnM = false;
       return 0;
 
     case WM_MOUSEMOVE:
@@ -352,13 +367,11 @@ int32_t GPUDisplayFrontendWindows::FrontendMain()
         DispatchMessage(&msg);  // Dispatch The Message
       }
     } else {
-      HandleExternalGUISignals();
-      if (active) // Program Active?
-      {
-        if (mKeys[VK_ESCAPE]) {
-          done = TRUE;
-        } else {
-          DrawGLScene();    // Draw The Scene
+      if (getDisplayControl() == 2) { // Quit key / StopDisplay
+        done = TRUE;
+      } else {
+        HandleUpdatesAndDrawGLScene(!active); // Only draw if the program is active
+        if (active) {
           SwapBuffers(hDC); // Swap Buffers (Double Buffering)
           waitForFPSLimit();
         }
@@ -372,7 +385,6 @@ int32_t GPUDisplayFrontendWindows::FrontendMain()
   return (0);
 }
 
-void OpenGLPrint(const char* s, float x, float y, float r, float g, float b, float a, bool fromBotton) {}
 void SwitchFullscreen(bool set) {}
 void ToggleMaximized(bool set) {}
 void SetVSync(bool enable) {}

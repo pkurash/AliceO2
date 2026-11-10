@@ -38,7 +38,6 @@
 #include "viewporter-client-protocol.h"
 #include "cursor-shape-client-protocol.h"
 #include <xkbcommon/xkbcommon.h>
-#include <linux/input-event-codes.h>
 
 using namespace o2::gpu;
 
@@ -50,13 +49,12 @@ GPUDisplayFrontendWayland::GPUDisplayFrontendWayland()
   mFrontendName = "Wayland";
 }
 
-void GPUDisplayFrontendWayland::OpenGLPrint(const char* s, float x, float y, float r, float g, float b, float a, bool fromBotton)
-{
-}
-
 int32_t GPUDisplayFrontendWayland::GetKey(uint32_t key, uint32_t state)
 {
   int32_t retVal = 0;
+  if (key == 41) { // evdev KEY_GRAVE, key left of 1: console key (^), independent of the layout (linux/input-event-codes.h must not be included here)
+    return ('^');
+  }
   if (mXKBkeymap) {
     xkb_keysym_t sym = xkb_state_key_get_one_sym(mXKBstate, key + 8);
     if (sym == XKB_KEY_KP_Subtract) {
@@ -95,6 +93,10 @@ int32_t GPUDisplayFrontendWayland::GetKey(uint32_t key, uint32_t state)
       return (KEY_HOME);
     } else if (sym == XKB_KEY_Insert) {
       return (KEY_INSERT);
+    } else if (sym == XKB_KEY_BackSpace) {
+      return (KEY_BACKSPACE);
+    } else if (sym == XKB_KEY_Delete) {
+      return (KEY_DELETE);
     } else if (sym == XKB_KEY_F1) {
       return (KEY_F1);
     } else if (sym == XKB_KEY_F2) {
@@ -174,24 +176,8 @@ int32_t GPUDisplayFrontendWayland::FrontendMain()
   };
   auto pointer_button = [](void* data, wl_pointer* wl_pointer, uint32_t serial, uint32_t time, uint32_t button, uint32_t state) {
     GPUDisplayFrontendWayland* me = (GPUDisplayFrontendWayland*)data;
-    if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
-      if (button == BTN_RIGHT) {
-        me->mMouseDnR = true;
-      } else if (button == BTN_LEFT) {
-        me->mMouseDn = true;
-      } else if (button == BTN_MIDDLE) {
-        me->mMouseDnM = true;
-      }
-      me->mMouseDnX = me->mMouseMvX;
-      me->mMouseDnY = me->mMouseMvY;
-    } else if (state == WL_POINTER_BUTTON_STATE_RELEASED) {
-      if (button == BTN_RIGHT) {
-        me->mMouseDnR = false;
-      } else if (button == BTN_LEFT) {
-        me->mMouseDn = false;
-      } else if (button == BTN_MIDDLE) {
-        me->mMouseDnM = false;
-      }
+    if (state == WL_POINTER_BUTTON_STATE_PRESSED || state == WL_POINTER_BUTTON_STATE_RELEASED) {
+      me->handlePointerButton(button, state == WL_POINTER_BUTTON_STATE_PRESSED);
     }
   };
   auto pointer_frame = [](void* data, wl_pointer* wl_pointer) { ((GPUDisplayFrontendWayland*)data)->applyScroll(); };
@@ -258,8 +244,7 @@ int32_t GPUDisplayFrontendWayland::FrontendMain()
     int32_t symbol = me->GetKey(key, state);
     int32_t keyPress = (symbol >= 'a' && symbol <= 'z') ? symbol + 'A' - 'a' : symbol;
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
-      me->mKeys[keyPress] = true;
-      me->mKeysShift[keyPress] = me->mKeys[KEY_SHIFT];
+      me->mKeys[keyPress] = keyPress == KEY_SHIFT || !me->consoleShown(); // Held keys only without console, SHIFT also with it (scrolling)
       me->HandleKey(symbol);
       if (symbol && me->mRepeatRate > 0 && me->mXKBkeymap && xkb_keymap_key_repeats(me->mXKBkeymap, key + 8)) { // Wayland compositors do not repeat keys, the client must do it
         me->mRepeatKeyCode = key;
@@ -268,7 +253,6 @@ int32_t GPUDisplayFrontendWayland::FrontendMain()
       }
     } else {
       me->mKeys[keyPress] = false;
-      me->mKeysShift[keyPress] = false;
       if ((int64_t)key == me->mRepeatKeyCode) {
         me->mRepeatKeyCode = -1;
       }
@@ -511,7 +495,7 @@ int32_t GPUDisplayFrontendWayland::FrontendMain()
   };
 
   auto xdg_toplevel_handle_close = [](void* data, xdg_toplevel* toplevel) {
-    ((GPUDisplayFrontendWayland*)data)->mDisplayControl = 2;
+    ((GPUDisplayFrontendWayland*)data)->mDisplay->mCfgC.displayControl.store(2);
   };
 #ifdef XDG_TOPLEVEL_CONFIGURE_BOUNDS_SINCE_VERSION
   auto xdg_toplevel_handle_configure_bounds = [](void* data, xdg_toplevel* toplevel, int32_t width, int32_t height) {
@@ -568,8 +552,11 @@ int32_t GPUDisplayFrontendWayland::FrontendMain()
     throw std::runtime_error("Wayland initialization failed");
   }
   if (initialFullScreen || initialMaximized) { // Only after the windowed initial configure, so that the compositor has a normal (un-maximized) placement, then wait for the new configure before creating the swapchain
-    setWindowState(initialFullScreen, initialMaximized);
-    applyInitialWindowState();
+    if (initialFullScreen) {                   // Directly: the settings were reset by the configure, the next configure syncs them to the actual state
+      requestFullScreen(true);
+    } else {
+      requestMaximized(true);
+    }
     if (wl_display_roundtrip(mWayland) == -1) {
       reportError("initial window state roundtrip");
       throw std::runtime_error("Wayland initialization failed");
@@ -580,12 +567,7 @@ int32_t GPUDisplayFrontendWayland::FrontendMain()
     return (1);
   }
 
-  {
-    std::lock_guard lock(mExitStateMutex);
-    mDisplayRunning = true;
-  }
-
-  while (mDisplayControl != 2) {
+  while (mDisplay->mCfgC.displayControl.load() != 2) {
     bool error = false;
     while (!error && wl_display_prepare_read(mWayland) != 0) {
       error = wl_display_dispatch_pending(mWayland) == -1;
@@ -608,14 +590,11 @@ int32_t GPUDisplayFrontendWayland::FrontendMain()
       reportError("dispatching events");
       break;
     }
-    if (mDisplayControl == 2) {
+    if (mDisplay->mCfgC.displayControl.load() == 2) {
       break;
     }
     handleKeyRepeat();
-    HandleExternalGUISignals();
-    if (!mSuspended) { // Window not visible, compositor would not release swapchain images
-      DrawGLScene();
-    }
+    HandleUpdatesAndDrawGLScene(mSuspended); // Window not visible, compositor would not release swapchain images
     waitForFPSLimit();
   }
 
@@ -631,6 +610,7 @@ int32_t GPUDisplayFrontendWayland::FrontendMain()
   {
     std::lock_guard lock(mExitStateMutex);
     mDisplayRunning = false;
+    mDisplayStoppedCV.notify_all();
   }
 
   if (mCursorShapeDevice) {

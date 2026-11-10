@@ -21,6 +21,7 @@
 #include "TPCBase/CRU.h"
 #include "DataFormatsTPC/Defs.h"
 #include "TPCSimulation/DigitTime.h"
+#include "TPCBase/CalDet.h"
 #include "CommonUtils/DebugStreamer.h"
 #include "TPCBase/ParameterDetector.h"
 #include "TPCBase/ParameterElectronics.h"
@@ -44,7 +45,15 @@ class DigitContainer
   DigitContainer();
 
   /// Destructor
-  ~DigitContainer() = default;
+  ~DigitContainer()
+  {
+    for (auto time : mTimeBins) {
+      delete time;
+    }
+  }
+
+  DigitContainer(const DigitContainer&) = delete;
+  DigitContainer& operator=(const DigitContainer&) = delete;
 
   /// Reset the container
   void reset();
@@ -78,6 +87,10 @@ class DigitContainer
   /// Get the size of the container for one event
   size_t size() const { return mTimeBins.size(); }
 
+  /// Fetch the calibration objects used by fillOutputContainer from the CDBInterface
+  /// Must be called after the CDBInterface is configured; fillOutputContainer calls it lazily otherwise
+  void updateCalibrations();
+
  private:
   TimeBin mFirstTimeBin = 0;                                  ///< First time bin to consider
   TimeBin mEffectiveTimeBin = 0;                              ///< Effective time bin of that digit
@@ -86,6 +99,10 @@ class DigitContainer
   std::deque<DigitTime*> mTimeBins;                           ///< Time bin Container for the ADC value
   std::unique_ptr<DigitTime::PrevDigitInfoArray> mPrevDigArr; ///< Keep track of ToT and ion tail cumul from last time bin
   o2::utils::DebugStreamer mStreamer;                         ///< Debug streamer
+  const CalPad* mPadParams[3] = {nullptr, nullptr, nullptr};  //!< Ion tail fraction, ion tail slope and common mode k-values per pad
+  const CalDet<bool>* mDeadMap = nullptr;                     //!< Dead channel map
+  bool mCMCEnabled = false;                                   //!< Common mode correction enabled in the FEE config (DigiMode Auto)
+  bool mCalibrationsUpdated = false;                          //!< Whether updateCalibrations was called
 
   void reportSettings();
 };
@@ -106,11 +123,11 @@ inline void DigitContainer::reset()
 {
   mFirstTimeBin = 0;
   mEffectiveTimeBin = 0;
-  for (auto& time : mTimeBins) {
-    if (time) {
-      time->reset();
-    }
+  // drop all time bins, including those beyond the timeframe limit, so that no MC labels survive
+  for (auto time : mTimeBins) {
+    delete time;
   }
+  mTimeBins.assign(mOffset, nullptr);
   if (mPrevDigArr) {
     std::fill(mPrevDigArr->begin(), mPrevDigArr->end(), PrevDigitInfo{});
   }
