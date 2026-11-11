@@ -52,8 +52,9 @@ GPUdii() void GPUTPCGlobalDebugSortKernels::Thread<GPUTPCGlobalDebugSortKernels:
     GPUCommonAlgorithm::sort(tmp, tmp + n, [&merger, offset](const int32_t& aa, const int32_t& bb) {
       const auto& a = merger.SectorTrackInfos()[offset + aa];
       const auto& b = merger.SectorTrackInfos()[offset + bb];
-      return (a.X() != b.X()) ? (a.X() < b.X()) : (a.Y() != b.Y()) ? (a.Y() < b.Y())
-                                                                   : (a.Z() < b.Z());
+      return (a.X() != b.X())   ? (a.X() < b.X())
+             : (a.Y() != b.Y()) ? (a.Y() < b.Y())
+                                : (a.Z() < b.Z());
     });
     for (int32_t j = 0; j < n; j++) {
       if (tmp[j] >= 0 && tmp[j] != j) {
@@ -107,7 +108,7 @@ GPUdii() void GPUTPCGlobalDebugSortKernels::Thread<GPUTPCGlobalDebugSortKernels:
   GPUCommonAlgorithm::sortDeviceDynamic(tmp, tmp + n, [&merger](const int32_t& aa, const int32_t& bb) {
     const GPUTPCGMMergedTrack& a = merger.MergedTracks()[aa];
     const GPUTPCGMMergedTrack& b = merger.MergedTracks()[bb];
-    return (a.GetAlpha() != b.GetAlpha()) ? (a.GetAlpha() < b.GetAlpha()) : (a.GetParam().GetX() != b.GetParam().GetX()) ? (a.GetParam().GetX() < b.GetParam().GetX()) : (a.GetParam().GetY() != b.GetParam().GetY()) ? (a.GetParam().GetY() < b.GetParam().GetY()) : (a.GetParam().GetZ() < b.GetParam().GetZ());
+    return (a.GetAlpha() != b.GetAlpha()) ? (a.GetAlpha() < b.GetAlpha()) : ((a.GetParam().GetX() != b.GetParam().GetX()) ? (a.GetParam().GetX() < b.GetParam().GetX()) : ((a.GetParam().GetY() != b.GetParam().GetY()) ? (a.GetParam().GetY() < b.GetParam().GetY()) : (a.GetParam().GetZ() < b.GetParam().GetZ())));
   });
 }
 

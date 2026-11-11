@@ -29,6 +29,11 @@ inline void GPUReconstructionMetal::runKernelBackend(const krnlSetupTime& _xyz, 
   if (kEvents.evList) {
     StreamWaitForEvents(kExec.stream, kEvents.evList, kEvents.nEvents);
   }
+  // Device timers: the kernel gets a command buffer of its own, whose GPU time is the kernel's
+  const bool timed = GetProcessingSettings().deviceTimers && GetProcessingSettings().debugLevel > 0;
+  if (timed && mInternals->streamHasWork[kExec.stream]) {
+    CommitStream(kExec.stream);
+  }
 
   id<MTLComputePipelineState> pso = mInternals->pipelines[num];
   id<MTLComputeCommandEncoder> computeEncoder = [mInternals->commandBuffers[kExec.stream] computeCommandEncoder];
@@ -37,6 +42,10 @@ inline void GPUReconstructionMetal::runKernelBackend(const krnlSetupTime& _xyz, 
   // Slots 0 to 2 are what GPUCA_KRNL_BUFFERS and GPUCA_KRNL_SECTOR_ARG declare
   // in the generated signature; the kernel's own arguments follow from slot 3.
   [computeEncoder setComputePipelineState:pso];
+  // The kernels reach the pools through the addresses kept in constant memory,
+  // which Metal cannot see, so they have to be made resident explicitly.
+  [computeEncoder useResource:mInternals->mem_gpu usage:MTLResourceUsageRead | MTLResourceUsageWrite];
+  [computeEncoder useResource:mInternals->mem_host usage:MTLResourceUsageRead | MTLResourceUsageWrite];
   [computeEncoder setBuffer:mInternals->mem_gpu offset:0 atIndex:0];
   [computeEncoder setBuffer:mInternals->mem_constant offset:0 atIndex:1];
   const int32_t iSector = runRange.index;
@@ -50,12 +59,31 @@ inline void GPUReconstructionMetal::runKernelBackend(const krnlSetupTime& _xyz, 
   if (threadGroupSize > mInternals->maxThreadsPerGroup[num]) {
     threadGroupSize = mInternals->maxThreadsPerGroup[num];
   }
+  if (mInternals->timeline) {
+    mInternals->timelineOps[kExec.stream] += std::string(" k:") + GetKernelName<T, I>() + "/" + std::to_string(kExec.nBlocks);
+    mInternals->timelineKernels[kExec.stream]++;
+  }
   [computeEncoder dispatchThreadgroups:MTLSizeMake(kExec.nBlocks, 1, 1)
                  threadsPerThreadgroup:MTLSizeMake(threadGroupSize, 1, 1)];
+  if (mInternals->canaryBad) {
+    metalEncodeCanary(mInternals, computeEncoder, (uint64_t)mDeviceMemoryBase + mDeviceMemorySize);
+  }
   metalEndEncoder(mInternals, computeEncoder, kExec.stream);
+  id<MTLCommandBuffer> cb = [mInternals->commandBuffers[kExec.stream] retain];
   if (kEvents.ev) {
     RecordMarker(kEvents.ev, kExec.stream);
+  } else if (mInternals->maxKernelsPerBuffer && ++mInternals->streamKernels[kExec.stream] >= mInternals->maxKernelsPerBuffer) {
+    CommitStream(kExec.stream);
   }
+  if (timed) {
+    if (mInternals->commandBuffers[kExec.stream] == cb) {
+      CommitStream(kExec.stream);
+    }
+    DrainStream(kExec.stream);
+    [cb waitUntilCompleted];  // the times are only set once the completion is processed
+    _xyz.t = cb.GPUEndTime - cb.GPUStartTime;
+  }
+  [cb release];
 }
 
 template <class T, int32_t I>
