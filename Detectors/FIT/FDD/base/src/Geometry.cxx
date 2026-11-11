@@ -160,6 +160,7 @@ void Geometry::buildGeometry()
     LOG(fatal) << "Could not find the top volume for A-side";
   }
   if (baseParam.isExperimental) {
+     mChannelCounter = 0;
      float rmin = baseParam.rminA, rmax = baseParam.rmaxA;
      auto vFDDA = buildModuleScint(rmin, rmax);
      vFDDA->SetName("FDDA");

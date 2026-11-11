@@ -87,6 +87,7 @@ class SimTraits
       /*FT0*/ VS{ "FT0Hit" },
       /*FV0*/ VS{ "FV0Hit" },
       /*FDD*/ VS{ "FDDHit" },
+      /*FD2*/ VS{ "FD2Hit" },
       /*TST*/ VS{ "TSTHit" }, // former ACO
       /*CTP*/ VS{ "CTPHit" },
       /*FOC*/ VS{ "FOCHit" }

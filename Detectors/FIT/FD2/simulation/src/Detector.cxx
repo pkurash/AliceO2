@@ -59,7 +59,9 @@ Detector::Detector(bool active)
 Detector::Detector(const Detector& rhs)
   : o2::base::DetImpl<Detector>(rhs),
     mTrackData(),
-    mHits(o2::utils::createSimVector<o2::fv0::Hit>())
+    mHits(o2::utils::createSimVector<o2::fv0::Hit>()),
+    mChannelCounter(0),
+    mChannelId{}
 {
 }
 
@@ -261,12 +263,11 @@ void Detector::buildModules()
   TGeoVolumeAssembly *vFD2_ScintA, *vFD2_ScintC;
 
   vFD2_ScintA = buildModuleScint(Constants::zScintA, Constants::etaMinA, Constants::etaMaxA);
-  vFD2_ScintC = buildModuleScint(Constants::zScintC, Constants::etaMaxC, Constants::etaMinC);
-
   vFD2_ScintA->SetName("FD2_ScintA");
-  vFD2_ScintC->SetName("FD2_ScintC");
-
   topVolume->AddNode(vFD2_ScintA, 1, new TGeoTranslation(0., 0., Constants::zScintA));
+
+  vFD2_ScintC = buildModuleScint(Constants::zScintC, Constants::etaMaxC, Constants::etaMinC);
+  vFD2_ScintC->SetName("FD2_ScintC");
   topVolume->AddNode(vFD2_ScintC, 1, new TGeoTranslation(0., 0., Constants::zScintC));
 
   float rA = 0.5 *(getRingSize(Constants::zScintA, Constants::etaMaxA) + getRingSize(Constants::zScintA, Constants::etaMinA));
@@ -363,6 +364,7 @@ void Detector::defineSensitiveVolumes()
   for (int ivol = 0; ivol < mChannelCounter; ivol++) {
     std::string volumeName = "fd2_node" + std::to_string(ivol);
     auto v = (TGeoVolume*)gGeoManager->GetVolume(volumeName.c_str());
+    LOG(info) << "Adding sensitive volume " << volumeName.c_str();
     if (!v) {
       continue;
     }

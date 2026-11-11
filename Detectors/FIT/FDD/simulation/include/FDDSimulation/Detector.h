@@ -91,6 +91,9 @@ class Detector : public o2::base::DetImpl<Detector>
 
   Geometry* mGeometry = nullptr; //! Geometry
 
+  int mChannelCounter;
+  std::map<int, int> mChannelId;
+
   template <typename Det>
   friend class o2::base::DetImpl;
   ClassDefOverride(Detector, 1);

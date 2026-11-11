@@ -1,4 +1,4 @@
-// Copyright 2019-2020 CERN and copyright holders of ALICE O2.
+//// Copyright 2019-2020 CERN and copyright holders of ALICE O2.
 // See https://alice-o2.web.cern.ch/copyright for details of the copyright holders.
 // All rights not expressly granted are reserved.
 //
@@ -94,7 +94,9 @@ void Detector::InitializeO2Detector()
        if (!v) {
          LOG(fatal) << "volume " << volumeName << " not found!";
        }
-       AddSensitiveVolume(v);
+       // AddSensitiveVolume(v);
+       int volId = registerSensitiveVolumeAndGetVolID(v);
+       mChannelId[volId] = ivol;
     }
   } else {
      vol = gGeoManager->GetVolume("FDApad");
@@ -129,34 +131,43 @@ Bool_t Detector::ProcessHits(FairVolume* vol)
     return kFALSE;
   }
 
-  Int_t copy;
-  Int_t current_volid = fMC->CurrentVolID(copy);
+  auto& baseParam = FDDBaseParam::Instance();
 
-  // Get sensitive volumes id (scintillator pads)
-  static Int_t idFDA = fMC->VolId("FDApad");
-  static Int_t idFDC = fMC->VolId("FDCpad");
+  Int_t copy, volId, detId;
+  Int_t current_volid;
+  Int_t ADsector;
 
-  // Get sector copy (1,2,3,4) ( 1 level up from pad )
-  Int_t sect;
-  fMC->CurrentVolOffID(1, sect);
+  if (baseParam.isExperimental) { 
+    volId = fMC->CurrentVolID(copy);
+    detId = mChannelId[volId];
+    LOG(info) << "volId = " << volId << ", detId = " << detId; 
+  } else {
+    current_volid = fMC->CurrentVolID(copy);
+    // Get sensitive volumes id (scintillator pads)
+    static Int_t idFDA = fMC->VolId("FDApad");
+    static Int_t idFDC = fMC->VolId("FDCpad");
+    // Get sector copy (1,2,3,4) ( 1 level up from pad )
+    Int_t sect;
+    fMC->CurrentVolOffID(1, sect);
 
-  // Get Detector copy (1,2) ( 2 levels up from pad )
-  Int_t detc;
-  fMC->CurrentVolOffID(2, detc);
+    // Get Detector copy (1,2) ( 2 levels up from pad )
+    Int_t detc;
+    fMC->CurrentVolOffID(2, detc);
 
-  // Set detector type: FDA or FDC
-  Int_t ADlayer = (current_volid == idFDC) ? 0 : 2;
+    // Set detector type: FDA or FDC
+    Int_t ADlayer = (current_volid == idFDC) ? 0 : 2;
 
-  sect--;          //     sector within layer [0-3]
-  detc--;          //     detector copy       [0-1]
-  ADlayer += detc; //     global layer number [0-3]
+    sect--;          //     sector within layer [0-3]
+    detc--;          //     detector copy       [0-1]
+    ADlayer += detc; //     global layer number [0-3]
 
-  Int_t ADsector = ADlayer * 4 + sect; // Global AD sector number [0-15]
-  // Layer    Sector Number
-  // FDC 0  =   0- 3
-  // FDC 1  =   4- 7
-  // FDA 2  =   8-11
-  // FDA 3  =  12-15
+    ADsector = ADlayer * 4 + sect; // Global AD sector number [0-15]
+    // Layer    Sector Number
+    // FDC 0  =   0- 3
+    // FDC 1  =   4- 7
+    // FDA 2  =   8-11
+    // FDA 3  =  12-15
+  }
 
   Float_t fFDDLightYield(12.8e6);
   //BC420 yield is 0.64 of antracene which is 20k photons/MeV = 12800/MeV = 12.8e6/GeV
@@ -181,7 +192,11 @@ Bool_t Detector::ProcessHits(FairVolume* vol)
 
     Float_t time = fMC->TrackTime() * 1.0e9; //time from seconds to ns
 
-    addHit(trackID, ADsector, mHitPosAD, time, mElossAD, mNPhotonsAD);
+    if (baseParam.isExperimental) {
+      addHit(trackID, detId, mHitPosAD, time, mElossAD, mNPhotonsAD);
+    } else {
+      addHit(trackID, ADsector, mHitPosAD, time, mElossAD, mNPhotonsAD);
+    }
     return kTRUE;
   }
 
