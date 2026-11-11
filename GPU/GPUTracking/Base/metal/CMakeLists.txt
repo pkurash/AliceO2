@@ -28,7 +28,9 @@ set(METAL_BIN ${CMAKE_CURRENT_BINARY_DIR}/GPUReconstructionMetalCode)
 # relies on for GPUgeneric() and GPUdDefault().
 set(METAL_FLAGS -std=metal4.1 ${GPUCA_METAL_DENORMALS_FLAGS})
 if(GPUCA_DETERMINISTIC_MODE GREATER_EQUAL ${GPUCA_DETERMINISTIC_MODE_MAP_NO_FAST_MATH})
-  set(METAL_FLAGS ${METAL_FLAGS} ${GPUCA_METAL_NO_FAST_MATH_FLAGS})
+  # A string of several flags, which the custom commands below would pass as one
+  separate_arguments(GPUCA_METAL_NO_FAST_MATH_FLAGS_LIST UNIX_COMMAND "${GPUCA_METAL_NO_FAST_MATH_FLAGS}")
+  set(METAL_FLAGS ${METAL_FLAGS} ${GPUCA_METAL_NO_FAST_MATH_FLAGS_LIST})
 endif()
 set(METAL_DEFINES "-D$<JOIN:$<TARGET_PROPERTY:O2::GPUTracking,COMPILE_DEFINITIONS>,$<SEMICOLON>-D>"
             "-I$<JOIN:$<FILTER:$<TARGET_PROPERTY:O2::GPUTracking,INCLUDE_DIRECTORIES>,EXCLUDE,^/usr/include/?>,$<SEMICOLON>-I>"
@@ -46,7 +48,7 @@ if(ALIGPU_BUILD_TYPE STREQUAL "O2")
                  PUBLIC_LINK_LIBRARIES O2::GPUTracking
                  TARGETVARNAME targetName)
 
-  target_link_libraries(${targetName} PUBLIC ${METAL_FRAMEWORKS})
+  target_link_libraries(${targetName} PUBLIC ${METAL_FRAMEWORKS} "-framework IOKit")
 
   target_compile_definitions(${targetName} PRIVATE $<TARGET_PROPERTY:O2::GPUTracking,COMPILE_DEFINITIONS>)
   # the compile_defitions are not propagated automatically on purpose (they are
@@ -101,6 +103,9 @@ if(METAL_ENABLED) # BUILD Metal source code for runtime compilation target
   target_link_options(${targetName}
                       PRIVATE
                       "-Wl,-sectcreate,__DATA,__gpu_resource,${METAL_BIN}.ir")
+  # The linker reads the IR, so relink when it changes: otherwise a change to the
+  # kernels alone leaves the old code in the library.
+  set_property(TARGET ${targetName} APPEND PROPERTY LINK_DEPENDS ${METAL_BIN}.ir)
   add_dependencies(${targetName} metal_preprocessed_code)
   add_dependencies(${targetName} metal_intermediate_representation)
 endif()

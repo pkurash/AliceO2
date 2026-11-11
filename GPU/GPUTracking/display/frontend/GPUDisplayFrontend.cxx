@@ -13,13 +13,14 @@
 /// \author David Rohr
 
 #include "GPUDisplayFrontend.h"
+#include "GPUDisplayConsole.h"
 #include "GPUDisplay.h"
 
 #ifdef _WIN32
 #include "GPUDisplayFrontendWindows.h"
-#else
-#include <pthread.h>
 #endif
+#include <system_error>
+#include <thread>
 
 #ifdef GPUCA_BUILD_EVENT_DISPLAY_X11
 #include "GPUDisplayFrontendX11.h"
@@ -44,7 +45,6 @@ GPUDisplayFrontend* createGPUDisplayFrontendWayland();
 #include <exception>
 #include <algorithm>
 #include <iterator>
-#include <thread>
 #include <utility>
 
 #ifdef GPUCA_BUILD_EVENT_DISPLAY_QT
@@ -60,48 +60,69 @@ class GPUDisplayGUIWrapper
 
 using namespace o2::gpu;
 
-GPUDisplayFrontend::GPUDisplayFrontend() = default;
-GPUDisplayFrontend::~GPUDisplayFrontend() = default;
-
-void* GPUDisplayFrontend::FrontendThreadWrapper(void* ptr)
+GPUDisplayFrontend::GPUDisplayFrontend() : mConsole(std::make_unique<GPUDisplayConsole>(std::string(DISPLAY_WINDOW_NAME) + " Console")) {}
+GPUDisplayFrontend::~GPUDisplayFrontend()
 {
-  GPUDisplayFrontend* me = reinterpret_cast<GPUDisplayFrontend*>(ptr);
+  if (mFrontendThread.joinable()) { // Started but not stopped, as the detached thread before
+    mFrontendThread.detach();
+  }
+}
+
+void GPUDisplayFrontend::FrontendThreadWrapper()
+{
   int32_t retVal;
   try {
-    retVal = me->FrontendMain();
+    retVal = FrontendMain();
   } catch (const std::exception& e) {
     GPUError("Error in display frontend: %s", e.what());
     retVal = -1;
   }
-  if (retVal && me->mDisplay->mInitResult == 0) { // Failed before InitDisplay was called, report failure to StartDisplay(), which otherwise waits forever
-    me->InitDisplay(true);
+  std::unique_lock lock(mExitStateMutex);
+  mDisplayRunning = false; // Also after an error / exception in the main loop, StopDisplay waits for it
+  mDisplayStoppedCV.notify_all();
+  if (retVal) {
+    if (mDisplay->mInitResult == 0) { // Failed before InitDisplay was called, report failure to StartDisplay(), which otherwise waits forever
+      lock.unlock();
+      InitDisplay(true);
+    } else {
+      mDisplay->mInitResult = -1; // Error after the initialization: StopDisplay does not reset the state for a new start
+    }
   }
-  return ((void*)(size_t)retVal);
 }
 
 void GPUDisplayFrontend::waitForFPSLimit()
 {
-  mNeedUpdate = 0;
   const auto now = std::chrono::steady_clock::now();
   const auto& cfg = mDisplay->cfgR();
   if (mBackend->fpsLimitMode() != GPUDisplayBackend::FPS_LIMIT_RATE || cfg.fpsRate <= 0) {
     mNextFrameTime = now;
     return;
   }
-  const auto period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1. / cfg.fpsRate)); // TODO: wake up on HasExternalGUISignals
+  const auto period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1. / cfg.fpsRate));
   mNextFrameTime += period;
   if (mNextFrameTime < now - period) { // More than one frame behind (slow rendering, first frame), do not try to catch up
     mNextFrameTime = now;
   }
-  std::this_thread::sleep_until(mNextFrameTime);
+  std::unique_lock lock(mConfigUpdateMutex);
+  mConfigUpdateCV.wait_until(lock, mNextFrameTime, [this] { return mConfigUpdatePending; });
+}
+
+void GPUDisplayFrontend::signalConfigUpdate()
+{
+  {
+    std::lock_guard lock(mConfigUpdateMutex);
+    mConfigUpdatePending = true;
+  }
+  mConfigUpdateCV.notify_one();
 }
 
 void GPUDisplayFrontend::HandleExternalGUISignals()
 {
-  const GPUSettingsDisplayHeavy oldCfgH = mDisplay->mCfgH;
-  const GPUSettingsDisplayLight oldCfgL = mDisplay->mCfgL;
-  const GPUSettingsDisplayRenderer oldCfgR = mDisplay->mCfgR;
-  bool changes = HandleExternalGUIKeys();
+  {
+    std::lock_guard lock(mConfigUpdateMutex);
+    mConfigUpdatePending = false; // Before fetching the updates, so that updates sent in the meantime signal again
+  }
+  HandleExternalGUIKeys();
 
   const bool gui = isGUIRunning();
   std::optional<GPUDisplayGUIChannel::Update> update;
@@ -114,19 +135,27 @@ void GPUDisplayFrontend::HandleExternalGUISignals()
     for (int32_t key : update->keys) {
       mDisplay->HandleExternalGUIKey(key);
     }
-    if (update->lineWidth) {
-      mDisplay->mCfgL.lineWidth = *update->lineWidth;
+    applyGUIValues(*update);
+    if (update->guiScale) {
+      mDisplay->mCfgO.guiScale = *update->guiScale;
     }
-    changes = true;
+    if (update->guiDarkMode) {
+      mDisplay->mCfgO.guiDarkMode = *update->guiDarkMode;
+    }
   }
 
-  if (changes) {
-    mDisplay->checkAndApplyConfigChanges(oldCfgH, oldCfgL, oldCfgR);
-  }
   if (gui) {
+    GPUDisplayGUIChannel::Settings cfg{mDisplay->mCfgH, mDisplay->mCfgL, mDisplay->mCfgR, mDisplay->mCfgO, mDisplay->mCfgC};
     {
       std::lock_guard lock(mGUIChannel->mutex);
-      mGUIChannel->state.cfg = {mDisplay->mCfgH, mDisplay->mCfgL, mDisplay->mCfgR};
+      mGUIChannel->state.cfg = std::move(cfg);
+      mGUIChannel->state.infoStatus = mDisplay->mCfgO.printInfoTextGUI ? mDisplay->mGUIInfoStatus : "";
+      mGUIChannel->state.infoText = mDisplay->mCfgO.printInfoTextGUI ? mDisplay->mGUIInfoText : "";
+      mGUIChannel->state.infoTextCounter = mDisplay->mGUIInfoTextCounter;
+      if (mDisplay->mUpdateGUIOptions) {
+        mGUIChannel->state.optionsRevision++;
+        mDisplay->mUpdateGUIOptions = false;
+      }
       if (update) {
         mGUIChannel->state.appliedUpdate = update->id;
       }
@@ -134,31 +163,49 @@ void GPUDisplayFrontend::HandleExternalGUISignals()
       mGUIChannel->displayProcessingCurrentUpdate = false;
     }
     mGUIChannel->stateUpdated.notify_all();
+    std::unique_lock lock(mGUIChannel->mutex);
+    if (mGUIChannel->optionsReadRevision != mGUIChannel->state.optionsRevision) { // The GUI calls the dynamic option lambdas (reading display data) only while we wait here, short timeout, retried in the next frame
+      mGUIChannel->displayWaitingForOptions = true;
+      mGUIChannel->optionsRead.wait_for(lock, std::chrono::milliseconds(20), [this] { return mGUIChannel->optionsReadRevision == mGUIChannel->state.optionsRevision || mGUIChannel->stop; });
+      mGUIChannel->displayWaitingForOptions = false;
+    }
   }
 }
 
-bool GPUDisplayFrontend::HasExternalGUISignals() const
+void GPUDisplayFrontend::sendExternalGUIKey(int32_t v, uint32_t translationMode, uint64_t extendedKey)
 {
-  return mExternalGUIKeys.size();
-}
-
-bool GPUDisplayFrontend::HandleExternalGUIKeys()
-{
-  std::lock_guard lock(mExternalGUIKeyMutex);
-  for (auto key : mExternalGUIKeys) {
-    mDisplay->HandleExternalGUIKey(key);
+  if (translationMode && (v = translateExternalKey(translationMode, extendedKey)) < 0) {
+    return;
   }
-  return !std::exchange(mExternalGUIKeys, {}).empty();
+  {
+    std::lock_guard lock(mExternalGUIKeyMutex);
+    mExternalGUIKeys.emplace_back(v);
+  }
+  signalConfigUpdate();
 }
 
-void GPUDisplayFrontend::sendExternalGUIKey(int32_t v)
-{
-  std::lock_guard lock(mExternalGUIKeyMutex);
-  mExternalGUIKeys.emplace_back(v);
-}
+bool GPUDisplayFrontend::consoleShown() const { return mDisplay->mCfgC.showConsole; }
+bool GPUDisplayFrontend::keyMapDown(uint32_t id) const { return mKeyDownMap[id] && mKeys[mKeyDownMap[id]]; } // Not mKeys[0] for unbound mappings: frontends may set it for unknown keys
+
+int32_t GPUDisplayFrontend::getDisplayControl() const { return mDisplay->mCfgC.displayControl.load(); }
+void GPUDisplayFrontend::setDisplayControl(int32_t v) { mDisplay->mCfgC.displayControl.store(v); }
 
 void GPUDisplayFrontend::HandleKey(uint8_t key) { mDisplay->HandleKey(key); }
-int32_t GPUDisplayFrontend::DrawGLScene() { return mDisplay->DrawGLScene(); }
+int32_t GPUDisplayFrontend::HandleUpdatesAndDrawGLScene(bool suspended)
+{
+  HandleExternalGUISignals();
+  mDisplay->checkAndApplyConfigChanges();
+  const bool startupScript = !mStartupScriptDone && !mDisplay->cfg().runScript.empty();
+  const int32_t retVal = mDisplay->DrawGLScene(suspended || startupScript); // Before the startup script, the first frame only loads the event, it is not rendered
+  mDisplay->mOldCfg = {mDisplay->mCfgH, mDisplay->mCfgL, mDisplay->mCfgR};  // Also includes the changes during drawing (animation, scene reset, ...), which set their update flags themselves
+  if (startupScript) {
+    mStartupScriptDone = true;
+    mConsole->runScriptFile(mDisplay->cfg().runScript); // Settings it changes are applied with the next frame
+  } else {
+    mConsole->processScripts(true); // Waiting script lines, wait / benchmark
+  }
+  return retVal;
+}
 
 void GPUDisplayFrontend::ResizeScene(int32_t width, int32_t height)
 {
@@ -189,6 +236,7 @@ int32_t GPUDisplayFrontend::startGUI()
 #ifdef GPUCA_BUILD_EVENT_DISPLAY_QT
   if (!mGUI) {
     mGUIChannel = std::make_unique<GPUDisplayGUIChannel>();
+    mGUIChannel->updatePosted = [this]() { signalConfigUpdate(); };
     mGUI = std::make_unique<GPUDisplayGUIWrapper>(*mGUIChannel);
   }
   if (!mGUI->isRunning()) {
@@ -196,10 +244,14 @@ int32_t GPUDisplayFrontend::startGUI()
       std::lock_guard lock(mGUIChannel->mutex);
       mGUIChannel->update.reset();
       mGUIChannel->state = {};
-      mGUIChannel->guiSleeping = mGUIChannel->displayProcessingCurrentUpdate = mGUIChannel->stop = false;
-      mGUIChannel->replyTimeout = std::chrono::milliseconds(mDisplay->cfg().guiReplyTimeout);
-      mGUIChannel->maxUpdatesAhead = std::max<uint32_t>(mDisplay->cfg().guiMaxUpdatesAhead, 1); // 0 would block all updates
+      mGUIChannel->guiSleeping = mGUIChannel->displayProcessingCurrentUpdate = mGUIChannel->stop = mGUIChannel->displayWaitingForOptions = false;
+      mGUIChannel->optionsReadRevision = 0;
+      mDisplay->mUpdateGUIOptions = true;
+      mGUIChannel->replyTimeout = std::chrono::milliseconds(mDisplay->cfg().internal.guiReplyTimeout);
+      mGUIChannel->maxUpdatesAhead = std::max<uint32_t>(mDisplay->cfg().internal.guiMaxUpdatesAhead, 1); // 0 would block all updates
+      mGUIChannel->infoTextTime = std::chrono::milliseconds(std::lround((mDisplay->cfg().internal.setInfoTime + mDisplay->cfg().internal.setInfoTransition) * 1000.f));
       mGUIChannel->windowName = DISPLAY_WINDOW_NAME;
+      setGUILayout(*mGUIChannel);
     }
     mGUI->start();
   } else {
@@ -264,23 +316,36 @@ GPUDisplayBackend* GPUDisplayFrontend::backend()
 
 void GPUDisplayFrontend::setWindowState(bool fullScreen, bool maximized)
 {
-  mDisplay->mCfgR.fullScreen = fullScreen;
-  mDisplay->mCfgR.maximized = maximized;
+  mDisplay->mCfgR.fullScreen = mWindowFullScreen = fullScreen;
+  mDisplay->mCfgR.maximized = mWindowMaximized = maximized;
+}
+
+void GPUDisplayFrontend::requestFullScreen(bool set)
+{
+  if (set != std::exchange(mWindowFullScreen, set)) {
+    SwitchFullscreen(set);
+  }
+}
+
+void GPUDisplayFrontend::requestMaximized(bool set)
+{
+  if (set != std::exchange(mWindowMaximized, set)) {
+    ToggleMaximized(set);
+  }
 }
 
 void GPUDisplayFrontend::focusLost()
 {
   std::fill(std::begin(mKeys), std::end(mKeys), false);
-  std::fill(std::begin(mKeysShift), std::end(mKeysShift), false);
   mMouseDn = mMouseDnR = mMouseDnM = false;
 }
 
 void GPUDisplayFrontend::applyInitialWindowState()
 {
   if (mDisplay->cfgR().fullScreen) {
-    SwitchFullscreen(true);
+    requestFullScreen(true);
   } else if (mDisplay->cfgR().maximized) {
-    ToggleMaximized(true);
+    requestMaximized(true);
   }
 }
 
@@ -296,34 +361,37 @@ int32_t& GPUDisplayFrontend::drawTextFontSize()
 
 int32_t GPUDisplayFrontend::StartDisplay()
 {
-#ifndef _WIN32
-  static pthread_t hThread;
-  if (pthread_create(&hThread, nullptr, FrontendThreadWrapper, this)) {
-    GPUError("Coult not Create frontend Thread...");
+  try {
+    mFrontendThread = std::thread(&GPUDisplayFrontend::FrontendThreadWrapper, this);
+  } catch (const std::system_error& e) {
+    GPUError("Could not create frontend thread: %s", e.what());
     return (1);
   }
-#else
-  HANDLE hThread;
-  if ((hThread = CreateThread(nullptr, nullptr, &OpenGLWrapper, this, nullptr, nullptr)) == nullptr) {
-    GPUError("Coult not Create GL Thread...");
-    return (1);
-  }
-#endif
-  return (0);
+  std::unique_lock lock(mExitStateMutex);
+  mStartDisplayDone = true;
+  mInitCV.notify_all();
+  mInitCV.wait(lock, [this] { return mDisplay->mInitResult != 0; }); // Both threads have finished their initialization
+  return (mDisplay->mInitResult != 1);
 }
 
 void GPUDisplayFrontend::StopDisplay()
 {
   {
-    std::lock_guard lock(mExitStateMutex);
+    std::unique_lock lock(mExitStateMutex);
     if (mDisplayRunning) {
-      mDisplayControl = 2;
+      mDisplay->mCfgC.displayControl.store(2);
       StopDisplayA();
       mDisplay->UnblockDisplay();
     }
+    mDisplayStoppedCV.wait(lock, [this] { return !mDisplayRunning; });
   }
-  while (mDisplayRunning) {
-    std::this_thread::sleep_for(std::chrono::microseconds(10000)); // TODO: Signal by semaphore
+  if (mFrontendThread.joinable()) { // Also the wrapper has finished (it sets mInitResult = -1 for errors after the initialization), not holding mExitStateMutex, which the wrapper uses
+    mFrontendThread.join();
+  }
+  std::lock_guard lock(mExitStateMutex);
+  if (mDisplay->mInitResult == 1) { // For a new StartDisplay, not after a failed initialization or an error (undefined state)
+    mStartDisplayDone = mStartupScriptDone = false;
+    mDisplay->mInitResult = 0;
   }
 }
 

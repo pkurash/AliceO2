@@ -20,8 +20,7 @@ o2_target_root_dictionary(ITSMFTTrackingParams
 
 o2_add_library(ITSMFTTracking
                TARGETVARNAME targetName
-               SOURCES src/BoundedAllocator.cxx
-                       src/CapacityEstimator.cxx
+               SOURCES src/CapacityEstimator.cxx
                        src/ITSTrackingConfigParam.cxx
                        src/SlabBumpAllocator.cxx
                        src/IOUtils.cxx
@@ -38,6 +37,7 @@ o2_add_library(ITSMFTTracking
                        src/Tracker.cxx
                PUBLIC_LINK_LIBRARIES
                        O2::ITSMFTTrackingParams
+                       O2::GenericTracking
                        O2::GPUCommon
                        O2::CommonConstants
                        O2::CommonDataFormat
@@ -53,7 +53,7 @@ o2_add_library(ITSMFTTracking
                        O2::SimulationDataFormat
                        O2::ReconstructionDataFormats
                        O2::DataFormatsCalibration
-                       TBB::tbb
+                       TBB::tbb TBB::tbbmalloc
                PRIVATE_LINK_LIBRARIES
                        O2::Framework
                        O2::FrameworkLogger

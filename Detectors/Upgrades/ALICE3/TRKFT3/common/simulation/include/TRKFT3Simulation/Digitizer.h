@@ -93,7 +93,7 @@ class Digitizer
   void setDeadChannelsMap(const o2::itsmft::NoiseMap* mp) { mDeadChanMap = mp; }
 
  private:
-  void processHit(const o2::trkft3::Hit& hit, uint32_t& maxFr, int evID, int srcID, int rofLayer);
+  void processHit(const o2::trkft3::Hit& hit, uint32_t& maxFr, int evID, int srcID, int rofLayer, std::vector<float>& respMatrix);
   void registerDigits(o2::trkft3::ChipDigitsContainer& chip, uint32_t roFrame, float toaInROF, int nROF,
                       uint16_t row, uint16_t col, int nEle, o2::MCCompLabel& lbl, int layer);
 
@@ -130,7 +130,7 @@ class Digitizer
   int getNRows(int subDetID, int layer)
   {
     if (subDetID == 0) { // VD
-      return o2::trk::constants::VD::petal::layer::nRows[layer];
+      return o2::trk::SegmentationChip::getNRowsVD(layer);
     } else if (subDetID == 1 || subDetID == 2) { // ML/OT
       return o2::trk::constants::moduleMLOT::chip::nRows;
     }

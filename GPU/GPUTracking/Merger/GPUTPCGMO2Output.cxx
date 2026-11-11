@@ -124,6 +124,12 @@ GPUdii() void GPUTPCGMO2Output::Thread<GPUTPCGMO2Output::output>(int32_t nBlocks
     TrackTPC oTrack;
     const int32_t i = trackSort[iTmp].x;
     const auto& track = tracks[i];
+    GPUCA_DEBUG_STREAMER_CHECK(if (o2::utils::DebugStreamer::checkStream(o2::utils::StreamFlags::streamdEdx)) {
+      o2::utils::DebugStreamer::instance()->getStreamer("debug_dedx", "UPDATE") << o2::utils::DebugStreamer::instance()->getUniqueTreeName("tree_indices").data()
+                                                                                << "trackID=" << iTmp
+                                                                                << "iTrk=" << i
+                                                                                << "\n";
+    })
     auto snpIn = track.GetParam().GetSinPhi();
     if (snpIn > SNPThresh) {
       snpIn = SNPThresh;

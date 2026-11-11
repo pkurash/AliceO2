@@ -9,6 +9,10 @@
 # granted to it by virtue of its status as an Intergovernmental Organization
 # or submit itself to any jurisdiction.
 
+# vendored FairRoot simulation base classes; must come first as
+# DetectorsBase and most simulation libraries link against it
+add_subdirectory(3rdparty/FairRootBase)
+
 add_subdirectory(Base)
 add_subdirectory(CADSupport)
 add_subdirectory(Raw)
@@ -25,6 +29,7 @@ add_subdirectory(HMPID)
 add_subdirectory(TOF)
 add_subdirectory(ZDC)
 
+add_subdirectory(GenericTracking)
 add_subdirectory(ITSMFT)
 add_subdirectory(External) # sensitive external (CAD-derived) detectors; uses ITSMFT hit type
 add_subdirectory(TRD)

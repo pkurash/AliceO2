@@ -39,12 +39,12 @@ class TrackCosmicsExtendedReader : public Task
 
  private:
   void connectTree(const std::string& filename);
+  bool mIncludeTFIDInfo = false;
   std::unique_ptr<TFile> mFile;
   std::unique_ptr<TTree> mTree;
   std::string mFileName = "";
   std::vector<o2::dataformats::TrackCosmicsExtended> mCosmics, *mCosmicsPtr = &mCosmics;
   o2::dataformats::CosmicsTFInfo mTFInfo, *mTFInfoPtr = &mTFInfo;
-  o2::dataformats::TFIDInfo mTFID, *mTFIDPtr = &mTFID;
 };
 
 /// create a processor spec to read the extended cosmics (as written by cosmics-full-writer) from a root file

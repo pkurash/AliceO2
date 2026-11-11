@@ -222,7 +222,7 @@ if [[ $BEAMTYPE == "PbPb" ]] && [ $NEvents -ge 5 ] ; then
   CHECK_DETECTORS_RAW+=" EMC PHS HMP"
 fi
 for i in $CHECK_DETECTORS_RAW; do
-  if [[ `ls -l raw/$i/*.raw | awk '{print $5}' | grep -v "^0\$" | wc -l` == "0" ]]; then
+  if [[ `ls -l raw/$i/*.raw | awk '{print $5}' | grep -c -v "^0\$"` == "0" ]]; then
     echo "ERROR: Full system test did generate no raw data for $i"
     exit 1
   fi
@@ -337,7 +337,7 @@ for STAGE in $STAGES; do
    # Check AOD production for ASYNC stage
   if [[ "$STAGE" = "ASYNC" ]]; then
     if [[ -f "AO2D.root" ]]; then
-      aod_size=`stat -c%s AO2D.root`
+      aod_size=$(wc -c < AO2D.root)
       if [[ $aod_size -gt 0 ]]; then
         echo "AO2D file produced: AO2D.root (size: ${aod_size} bytes)"
         echo "aod_size_${STAGE},${TAG} value=${aod_size}" >> ${METRICFILE}

@@ -36,6 +36,7 @@
 #include <cassert>
 #include <cstddef> // for NULL
 #include <cmath>
+#include "DetectorsBase/SimRandom.h"
 
 using std::cout;
 using std::endl;
@@ -100,7 +101,7 @@ Stack::Stack(Int_t size)
     transportPrimary = o2::conf::GetFromMacro<o2::data::Stack::TransportFcn>(param.transportPrimaryFileName,
                                                                              param.transportPrimaryFuncName,
                                                                              "o2::data::Stack::TransportFcn", "stack_transport_primary");
-    if (!mTransportPrimary) {
+    if (!transportPrimary) {
       LOG(fatal) << "Failed to retrieve external \'transportPrimary\' function: problem with configuration ";
     }
     LOG(info) << "Successfully retrieve external \'transportPrimary\' frunction: " << param.transportPrimaryFileName;
@@ -109,7 +110,7 @@ Stack::Stack(Int_t size)
   }
 
   if (param.transportPrimaryInvert) {
-    mTransportPrimary = [transportPrimary](const TParticle& p, const std::vector<TParticle>& particles) { return !transportPrimary; };
+    mTransportPrimary = [transportPrimary](const TParticle& p, const std::vector<TParticle>& particles) { return !transportPrimary(p, particles); };
   } else {
     mTransportPrimary = transportPrimary;
   }
@@ -361,7 +362,7 @@ TParticle* Stack::PopNextTrack(Int_t& iTrack)
         auto hash = getHash(mCurrentParticle);
         // LOG(info) << "SEEDING NEW TRACK USING HASH" << hash;
         // init seed per track
-        gRandom->SetSeed(hash);
+        o2::base::simRandom()->SetSeed(hash);
         o2::base::VMCSeederService::instance().setSeed();
         // NOTE: THE BETTER PLACE WOULD BE IN PRETRACK HOOK BUT THIS DOES NOT SEEM TO WORK
         // WORKS ONLY WITH G3 SINCE G4 DOES NOT CALL THIS FUNCTION

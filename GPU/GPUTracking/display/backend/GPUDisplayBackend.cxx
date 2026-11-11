@@ -132,7 +132,7 @@ void GPUDisplayBackend::loadFont()
   mFontRasterScale = mDisplay->frontend()->getDisplayScale();
   FT_Set_Pixel_Sizes(face, 0, (uint32_t)(fontSize * mFontRasterScale + 0.5f)); // Rasterize at physical pixel size for HiDPI
 
-  for (uint32_t i = 0; i < 128; i++) {
+  for (uint32_t i = 0; i < SOLID_GLYPH; i++) {
     if (FT_Load_Char(face, i, FT_LOAD_RENDER)) {
       GPUError("Error loading freetype symbol");
       FT_Done_Face(face);
@@ -140,8 +140,13 @@ void GPUDisplayBackend::loadFont()
       return;
     }
     const auto& glyph = face->glyph;
+    if (i == 'M') {
+      mFontCharWidth = (glyph->advance.x >> 6) * (smoothFont() ? 0.25f : 1.f) / mFontRasterScale; // As in GLPrintText of the backends
+    }
     addFontSymbol(i, glyph->bitmap.width, glyph->bitmap.rows, glyph->bitmap_left, glyph->bitmap_top, glyph->advance.x, glyph->bitmap.buffer);
   }
+  std::vector<uint8_t> solid(8 * 8, 255);
+  addFontSymbol(SOLID_GLYPH, 8, 8, 0, 0, 0, solid.data());
   initializeTextDrawing();
   FT_Done_Face(face);
   FT_Done_FreeType(ft);
@@ -163,13 +168,16 @@ std::vector<char> GPUDisplayBackend::getPixels()
 
 void GPUDisplayBackend::fillIndirectCmdBuffer()
 {
-  mCmdBuffer.clear();
   mIndirectSectorOffset.resize(GPUTPCGeometry::NSECTORS);
-  // TODO: Check if this can be parallelized
+  size_t total = 0;
   for (uint32_t iSector = 0; iSector < GPUTPCGeometry::NSECTORS; iSector++) {
-    mIndirectSectorOffset[iSector] = mCmdBuffer.size();
+    mIndirectSectorOffset[iSector] = total;
+    total += mDisplay->vertexBufferStart()[iSector].size();
+  }
+  mCmdBuffer.resize(total);
+  for (uint32_t iSector = 0; iSector < GPUTPCGeometry::NSECTORS; iSector++) {
     for (uint32_t k = 0; k < mDisplay->vertexBufferStart()[iSector].size(); k++) {
-      mCmdBuffer.emplace_back(mDisplay->vertexBufferCount()[iSector][k], 1, mDisplay->vertexBufferStart()[iSector][k], 0);
+      mCmdBuffer[mIndirectSectorOffset[iSector] + k] = DrawArraysIndirectCommand(mDisplay->vertexBufferCount()[iSector][k], 1, mDisplay->vertexBufferStart()[iSector][k], 0);
     }
   }
 }
@@ -200,4 +208,48 @@ float GPUDisplayBackend::getDownsampleFactor(bool screenshot)
 bool GPUDisplayBackend::smoothFont()
 {
   return mDisplay->cfg().smoothFont < 0 ? (mDisplay->cfg().fontSize > 12) : mDisplay->cfg().smoothFont;
+}
+
+void GPUDisplayBackend::GLDrawLine(float x0, float y0, float x1, float y1, float width, const float* color)
+{
+  const float dx = x1 - x0, dy = y1 - y0, length = std::sqrt(dx * dx + dy * dy);
+  if (length == 0.f) {
+    return;
+  }
+  const float nx = -dy / length * width * 0.5f, ny = dx / length * width * 0.5f; // Perpendicular, half the width
+  GLDrawQuad({{x0 + nx, y0 + ny}, {x0 - nx, y0 - ny}, {x1 - nx, y1 - ny}, {x1 + nx, y1 + ny}}, color);
+}
+
+uint32_t GPUDisplayBackend::GLDrawConsole(float verticalFraction, std::span<const std::string> previous, const std::string& current, int32_t cursorPos, uint32_t scroll)
+{
+  if (!mFreetypeInitialized) {
+    return 1;
+  }
+  const float scale = mDisplay->frontend()->getDisplayScale();
+  const float colorValue = mDisplay->cfgL().invertColors ? 0.f : 1.f;
+  float textColor[4] = {colorValue, colorValue, colorValue, 1.f};
+  const float backgroundColor[4] = {1.f - colorValue, 1.f - colorValue, 1.f - colorValue, mDisplay->cfg().internal.consoleAlpha};
+  const float width = mScreenWidth, top = mScreenHeight, bottom = top * (1.f - verticalFraction);
+  GLDrawQuad({{0.f, bottom}, {width, bottom}, {width, top}, {0.f, top}}, backgroundColor);
+  GLDrawLine(0.f, bottom, width, bottom, scale, textColor);
+
+  static constexpr float MARGIN = 6.f;                                                                                    // Logical pixels from the text to the left border and to the line
+  const float lineHeight = std::max(20, mDisplay->drawTextFontSize() + 4) * scale;                                        // As the info text of GPUDisplay
+  const float descent = 0.25f * mDisplay->drawTextFontSize() * scale;                                                     // Below the baseline, approximately
+  const size_t maxChars = mFontCharWidth > 0.f ? std::max(0.f, (width / scale - 2 * MARGIN) / mFontCharWidth) : SIZE_MAX; // Longer lines are cut
+  float y = bottom + (0.5f + MARGIN) * scale + descent;                                                                   // Baseline of the lowest line, MARGIN above the line (half its width)
+  if (cursorPos >= 0 && (size_t)cursorPos < maxChars && mFontCharWidth > 0.f) {                                           // Monospace font: position from the character width
+    const float x0 = (MARGIN + cursorPos * mFontCharWidth) * scale, x1 = x0 + mFontCharWidth * scale;
+    const float y1 = y - 0.5f * descent, y0 = y1 - 3.f * scale;
+    GLDrawQuad({{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}}, textColor); // Solid underline, 3 logical pixels, below the baseline
+  }
+  const uint32_t nFit = std::max(1.f, std::floor((top - y + descent) / lineHeight) - 1.f); // Lines above the current one that fit, as in the loop
+  scroll = std::min<size_t>(scroll, previous.size());
+  for (size_t i = 0; i <= previous.size() - scroll && y + lineHeight - descent <= top; i++, y += lineHeight) {
+    const std::string& text = i == 0 ? current : previous[previous.size() - scroll - i];
+    if (!text.empty() && maxChars) {
+      GLPrintText(text.c_str(), MARGIN * scale, y, textColor, scale / mFontRasterScale, std::min(text.size(), maxChars));
+    }
+  }
+  return nFit;
 }

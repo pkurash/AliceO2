@@ -38,6 +38,8 @@
 #include "GPUTPCGMMerger.h"
 #include "GPUChainTracking.h"
 #include "GPUConstantMem.h"
+#define GPUSETTINGS_STANDALONE
+#define GPUSETTINGS_DISPLAY
 #include "GPUSettings.h"
 
 using namespace o2::gpu;
@@ -99,7 +101,7 @@ double genEvents::GetGaus(double sigma)
   return x;
 }
 
-void genEvents::InitEventGenerator()
+void genEvents::InitEventGenerator(const std::string& dir)
 {
   for (int32_t i = 0; i < 3; i++) {
     for (int32_t j = 0; j < 2; j++) {
@@ -113,6 +115,7 @@ void genEvents::InitEventGenerator()
       mClusterError[i][j]->GetXaxis()->SetTitle("Cluster Error [cm]");
     }
   }
+  mRec->rec()->DumpSettings(dir.c_str()); // the chain's own override does not write settings.dump
 }
 
 void genEvents::FinishEventGenerator()
@@ -274,7 +277,7 @@ int32_t genEvents::GenerateEvent(const GPUParam& param, const char* filename)
       GenCluster c;
       float sigmaY = 0.3;
       float sigmaZ = 0.5;
-      const int32_t rowType = iRow < 64 ? 0 : iRow < 128 ? 2 : 1;
+      const int32_t rowType = iRow < 64 ? 0 : (iRow < 128 ? 2 : 1);
       t.UpdateValues();
       param.GetClusterErrors2(iSector, rowType, t.GetZ(), t.GetSinPhi(), t.GetDzDs(), -1.f, 0.f, 0.f, sigmaY, sigmaZ);
       sigmaY = std::sqrt(sigmaY);
@@ -357,9 +360,8 @@ void genEvents::RunEventGenerator(GPUChainTracking* rec, const std::string& dir)
 {
   std::unique_ptr<genEvents> gen(new genEvents(rec));
   mkdir(dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-  rec->DumpSettings(dir.c_str());
 
-  gen->InitEventGenerator();
+  gen->InitEventGenerator(dir);
 
   for (int32_t i = 0; i < (configStandalone.nEvents == -1 ? 10 : configStandalone.nEvents); i++) {
     GPUInfo("Generating event %d/%d", i, configStandalone.nEvents == -1 ? 10 : configStandalone.nEvents);

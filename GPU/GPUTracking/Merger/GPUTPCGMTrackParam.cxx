@@ -304,11 +304,11 @@ GPUd() bool GPUTPCGMTrackParam::Fit(GPUTPCGMMerger* GPUrestrict() merger, int32_
               relTime /= clusterCount;
               relTime = relTime - CAMath::Round(relTime);
               if (acc) {
-                dEdx.fillCluster(qtot, qmax, cluster.row, cluster.sector, mP[2], mP[3], merger->GetConstantMem()->calibObjects, zz, pad, relTime);
+                dEdx.fillCluster(qtot, qmax, cluster.row, cluster.sector, mP[2], mP[3], merger->GetConstantMem()->calibObjects, zz, pad, relTime GPUCA_DEBUG_STREAMER_CHECK(, iTrk, clusterState));
               }
               if GPUCA_RTC_CONSTEXPR (GPUCA_GET_CONSTEXPR(param.rec.tpc, dEdxClusterRejectionFlagMask) != GPUCA_GET_CONSTEXPR(param.rec.tpc, dEdxClusterRejectionFlagMaskAlt)) {
                 if (accAlt) {
-                  dEdxAlt.fillCluster(qtot, qmax, cluster.row, cluster.sector, mP[2], mP[3], merger->GetConstantMem()->calibObjects, zz, pad, relTime);
+                  dEdxAlt.fillCluster(qtot, qmax, cluster.row, cluster.sector, mP[2], mP[3], merger->GetConstantMem()->calibObjects, zz, pad, relTime GPUCA_DEBUG_STREAMER_CHECK(, iTrk, clusterState));
                 }
               }
             }

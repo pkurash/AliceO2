@@ -15,6 +15,7 @@
 
 #include "TPCSimulation/DigitContainer.h"
 #include <memory>
+#include <type_traits>
 #include <fairlogger/Logger.h>
 #include "TPCBase/Mapper.h"
 #include "TPCBaseRecSim/CDBInterface.h"
@@ -43,22 +44,13 @@ void DigitContainer::fillOutputContainer(std::vector<Digit>& output,
   // Without this we might get crashes in the clusterization step.
   static const int maxTimeBinForTimeFrame = o2::conf::DigiParams::Instance().maxOrbitsToDigitize != -1 ? ((o2::conf::DigiParams::Instance().maxOrbitsToDigitize * 3564 + 2 * 8 - 2) / 8) : -1;
 
-  auto& cdb = CDBInterface::instance();
-
-  // ion tail per pad parameters
-  const CalPad* padParams[3] = {nullptr, nullptr, nullptr};
-
-  if (eleParam.doIonTailPerPad) {
-    const auto& itSettings = IonTailSettings::Instance();
-    if (itSettings.padITCorrFile.size()) {
-      cdb.setFEEParamsFromFile(itSettings.padITCorrFile);
-    }
-    padParams[0] = &cdb.getITFraction();
-    padParams[1] = &cdb.getITExpLambda();
+  if (!mCalibrationsUpdated) {
+    LOG(debug) << "TPC DigitContainer: calibrations not set up before the first flush, fetching them now";
+    updateCalibrations();
   }
-  if (eleParam.doCommonModePerPad) {
-    padParams[2] = &cdb.getCMkValues();
-  }
+
+  // after updateCalibrations, which may reload the FEE parameters that SAMPAProcessing picks up
+  auto& sampaProcessing = mSAMPAProcessing ? *mSAMPAProcessing : SAMPAProcessing::instance();
 
   const bool needsPrevDigArray = eleParam.doIonTail || eleParam.doIonTailPerPad || eleParam.doSaturationTail;
   const bool needsEmptyTimeBins = needsPrevDigArray || eleParam.doNoiseEmptyPads;
@@ -68,17 +60,11 @@ void DigitContainer::fillOutputContainer(std::vector<Digit>& output,
     mPrevDigArr = std::make_unique<DigitTime::PrevDigitInfoArray>();
   }
 
-  // dead channel map
-  const CalDet<bool>* deadMap = {nullptr};
-  if (eleParam.applyDeadMap) {
-    deadMap = &cdb.getDeadChannelMap();
-  }
-
   static bool reportedSettings = false;
   if (!reportedSettings) {
     reportSettings();
-    if (deadMap) {
-      LOGP(info, "Using dead map with {} masked pads", deadMap->getSum<int>());
+    if (mDeadMap) {
+      LOGP(info, "Using dead map with {} masked pads", mDeadMap->getSum<int>());
     }
     reportedSettings = true;
   }
@@ -107,40 +93,37 @@ void DigitContainer::fillOutputContainer(std::vector<Digit>& output,
     // fmt::print("Processing secotor: {}, time bin: {}, mFirstTimeBin: {}, dgitTime: {}\n", sector.getSector(), timeBin, mFirstTimeBin, (void*)time);
 
     if (time) {
+      // the digitization mode is a template parameter of fillOutputContainer
+      auto fill = [&](auto mode) {
+        time->fillOutputContainer<decltype(mode)::value>(output, mcTruth, commonModeOutput, sector, timeBin, sampaProcessing, mLabelCollector, mPrevDigArr.get(), debugStream, mPadParams, mDeadMap);
+      };
+      using M = DigitzationMode;
       switch (digitizationMode) {
-        case DigitzationMode::FullMode: {
-          time->fillOutputContainer<DigitzationMode::FullMode>(output, mcTruth, commonModeOutput, sector, timeBin, mPrevDigArr.get(), debugStream, padParams, deadMap);
+        case M::FullMode:
+          fill(std::integral_constant<M, M::FullMode>{});
           break;
-        }
-        case DigitzationMode::ZeroSuppression: {
-          time->fillOutputContainer<DigitzationMode::ZeroSuppression>(output, mcTruth, commonModeOutput, sector, timeBin, mPrevDigArr.get(), debugStream, padParams, deadMap);
+        case M::ZeroSuppression:
+          fill(std::integral_constant<M, M::ZeroSuppression>{});
           break;
-        }
-        case DigitzationMode::ZeroSuppressionCMCorr: {
-          time->fillOutputContainer<DigitzationMode::ZeroSuppressionCMCorr>(output, mcTruth, commonModeOutput, sector, timeBin, mPrevDigArr.get(), debugStream, padParams, deadMap);
+        case M::ZeroSuppressionCMCorr:
+          fill(std::integral_constant<M, M::ZeroSuppressionCMCorr>{});
           break;
-        }
-        case DigitzationMode::SubtractPedestal: {
-          time->fillOutputContainer<DigitzationMode::SubtractPedestal>(output, mcTruth, commonModeOutput, sector, timeBin, mPrevDigArr.get(), debugStream, padParams, deadMap);
+        case M::SubtractPedestal:
+          fill(std::integral_constant<M, M::SubtractPedestal>{});
           break;
-        }
-        case DigitzationMode::NoSaturation: {
-          time->fillOutputContainer<DigitzationMode::NoSaturation>(output, mcTruth, commonModeOutput, sector, timeBin, mPrevDigArr.get(), debugStream, padParams, deadMap);
+        case M::NoSaturation:
+          fill(std::integral_constant<M, M::NoSaturation>{});
           break;
-        }
-        case DigitzationMode::PropagateADC: {
-          time->fillOutputContainer<DigitzationMode::PropagateADC>(output, mcTruth, commonModeOutput, sector, timeBin, mPrevDigArr.get(), debugStream, padParams, deadMap);
+        case M::PropagateADC:
+          fill(std::integral_constant<M, M::PropagateADC>{});
           break;
-        }
-        case DigitzationMode::Auto: {
-          const auto& feeConfig = cdb.getFEEConfig();
-          if (feeConfig.isCMCEnabled()) {
-            time->fillOutputContainer<DigitzationMode::ZeroSuppressionCMCorr>(output, mcTruth, commonModeOutput, sector, timeBin, mPrevDigArr.get(), debugStream, padParams, deadMap);
+        case M::Auto:
+          if (mCMCEnabled) {
+            fill(std::integral_constant<M, M::ZeroSuppressionCMCorr>{});
           } else {
-            time->fillOutputContainer<DigitzationMode::ZeroSuppression>(output, mcTruth, commonModeOutput, sector, timeBin, mPrevDigArr.get(), debugStream, padParams, deadMap);
+            fill(std::integral_constant<M, M::ZeroSuppression>{});
           }
           break;
-        }
       }
     }
 
@@ -156,6 +139,34 @@ void DigitContainer::fillOutputContainer(std::vector<Digit>& output,
       delete popped;
     }
   }
+}
+
+void DigitContainer::updateCalibrations()
+{
+  const auto& eleParam = ParameterElectronics::Instance();
+  auto& cdb = CDBInterface::instance();
+
+  // ion tail per pad parameters
+  mPadParams[0] = mPadParams[1] = mPadParams[2] = nullptr;
+  if (eleParam.doIonTailPerPad) {
+    const auto& itSettings = IonTailSettings::Instance();
+    if (itSettings.padITCorrFile.size()) {
+      cdb.setFEEParamsFromFile(itSettings.padITCorrFile);
+    }
+    mPadParams[0] = &cdb.getITFraction();
+    mPadParams[1] = &cdb.getITExpLambda();
+  }
+  if (eleParam.doCommonModePerPad) {
+    mPadParams[2] = &cdb.getCMkValues();
+  }
+
+  // dead channel map
+  mDeadMap = eleParam.applyDeadMap ? &cdb.getDeadChannelMap() : nullptr;
+
+  // common mode correction in the FEE, needed to resolve DigiMode Auto
+  mCMCEnabled = (eleParam.DigiMode == DigitzationMode::Auto) && cdb.getFEEConfig().isCMCEnabled();
+
+  mCalibrationsUpdated = true;
 }
 
 void DigitContainer::reportSettings()
