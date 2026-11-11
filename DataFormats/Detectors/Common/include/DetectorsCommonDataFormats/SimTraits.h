@@ -225,6 +225,10 @@ struct DetIDToHitTypes<o2::detectors::DetID::FV0> {
   using HitType = o2::fv0::Hit;
 };
 template <>
+struct DetIDToHitTypes<o2::detectors::DetID::FD2> {
+  using HitType = o2::fv0::Hit;
+};
+template <>
 struct DetIDToHitTypes<o2::detectors::DetID::MCH> {
   using HitType = o2::mch::Hit;
 };
