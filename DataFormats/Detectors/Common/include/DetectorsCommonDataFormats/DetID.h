@@ -187,7 +187,7 @@ class DetID
 #ifdef ENABLE_UPGRADES
     {"ITS", "TPC", "TRD", "TOF", "PHS", "CPV", "EMC", "HMP", "MFT", "MCH", "MID", "ZDC", "FT0", "FV0", "FDD",  "TST", "CTP", "FD2", "FOC", "IT3", "TRK", "FT3", "FCT", "TF3", "RCH", "MI3", "ECL", "FD3", nullptr};
 #else
-    {"ITS", "TPC", "TRD", "TOF", "PHS", "CPV", "EMC", "HMP", "MFT", "MCH", "MID", "ZDC", "FT0", "FV0", "FDD", "FD2", "TST", "CTP", "FOC", nullptr};
+    {"ITS", "TPC", "TRD", "TOF", "PHS", "CPV", "EMC", "HMP", "MFT", "MCH", "MID", "ZDC", "FT0", "FV0", "FDD",  "TST", "CTP", "FD2", "FOC", nullptr};
 #endif
 
   static constexpr std::array<o2h::DataOrigin, nDetectors>
