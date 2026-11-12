@@ -401,15 +401,34 @@ void Detector::defineSensitiveVolumes()
 
   mChannelId = {};
 
-  for (int ivol = 0; ivol < mChannelCounter; ivol++) {
-    std::string volumeName = "fd2_node" + std::to_string(ivol);
-    auto v = (TGeoVolume*)gGeoManager->GetVolume(volumeName.c_str());
-    if (!v) {
-      continue;
-    }
-    int volId = registerSensitiveVolumeAndGetVolID(v);
-    mChannelId[volId] = ivol;
+  auto FD2_ScintA = (TGeoVolumeAssembly*)gGeoManager->GetVolume("FD2_ScintA");
+  auto FD2_ScintC = (TGeoVolumeAssembly*)gGeoManager->GetVolume("FD2_ScintC");
+  
+  int ivol = 0;
+
+  for (int i = 0; i < FD2_ScintA->GetNdaughters(); i++) {
+     auto node = (TGeoNode*)FD2_ScintA->GetNode(i);
+     auto v = (TGeoVolume*)node->GetVolume();
+     int volId = registerSensitiveVolumeAndGetVolID(v);
+     mChannelId[volId] = ivol;
   }
+
+  for (int i = 0; i < FD2_ScintC->GetNdaughters(); i++) {
+     auto node = (TGeoNode*)FD2_ScintC->GetNode(i);
+     auto v = (TGeoVolume*)node->GetVolume();
+     int volId = registerSensitiveVolumeAndGetVolID(v);
+     mChannelId[volId] = ivol;
+  }
+
+//  for (int ivol = 0; ivol < mChannelCounter; ivol++) {
+//    std::string volumeName = "fd2_node" + std::to_string(ivol);
+//    auto v = (TGeoVolume*)gGeoManager->GetVolume(volumeName.c_str());
+//    if (!v) {
+//      continue;
+//    }
+//    int volId = registerSensitiveVolumeAndGetVolID(v);
+//    mChannelId[volId] = ivol;
+//  }
   LOG(info) << "Done";
 }
 
