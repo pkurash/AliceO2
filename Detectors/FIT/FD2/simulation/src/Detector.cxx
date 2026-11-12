@@ -274,8 +274,8 @@ void Detector::buildModules()
   vFD2_ScintC->SetName("FD2_ScintC");
 
  // vFD2_ScintC = buildModuleScint(Constants::zScintC, Constants::etaMaxC, Constants::etaMinC);
-  vCaveRB24->AddNode(vFD2_ScintA, 1, new TGeoTranslation(0., 0., Constants::zScintA));
-  vCave->AddNode(vFD2_ScintC, 1, new TGeoTranslation(0., 0.,  Constants::zScintC));
+  vCave->AddNode(vFD2_ScintA, 1, new TGeoTranslation(0., 0., Constants::zScintA));
+  vCave->AddNode(vFD2_ScintC, 1, new TGeoTranslation(0., 0., Constants::zScintC));
 
  // float rA = 0.5 *(getRingSize(Constants::zScintA, Constants::etaMaxA) + getRingSize(Constants::zScintA, Constants::etaMinA));
   float rA = 0.5 * (rmaxA + rminA);
