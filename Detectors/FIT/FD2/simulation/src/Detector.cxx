@@ -256,36 +256,44 @@ void Detector::buildModules()
 
   auto& baseParam = FD2BaseParam::Instance();
 
-  auto topVolume = (TGeoVolume*)gGeoManager->GetVolume("cave");
+  auto vCaveRB24 = (TGeoVolume*)gGeoManager->GetVolume("caveRB24");
+  auto vCave     = (TGeoVolume*)gGeoManager->GetVolume("cave");
 
   mChannelCounter = 0;
 
   TGeoVolumeAssembly *vFD2_ScintA, *vFD2_ScintC;
 
-  vFD2_ScintA = buildModuleScint(Constants::zScintA, Constants::etaMinA, Constants::etaMaxA);
+   float rminA = baseParam.rminA, rmaxA = baseParam.rmaxA,
+	 rminC = baseParam.rminC, rmaxC = baseParam.rmaxC;
+
+  //vFD2_ScintA = buildModuleScint(Constants::zScintA, Constants::etaMinA, Constants::etaMaxA);
+  vFD2_ScintA = buildModuleScint(rminA, rmaxA);
   vFD2_ScintA->SetName("FD2_ScintA");
-  topVolume->AddNode(vFD2_ScintA, 1, new TGeoTranslation(0., 0., Constants::zScintA));
+  vCaveRB24->AddNode(vFD2_ScintA, 1, new TGeoTranslation(0., 0., Constants::zScintA));
 
-  vFD2_ScintC = buildModuleScint(Constants::zScintC, Constants::etaMaxC, Constants::etaMinC);
+ // vFD2_ScintC = buildModuleScint(Constants::zScintC, Constants::etaMaxC, Constants::etaMinC);
+  vFD2_ScintC = buildModuleScint(rminC, rmaxC);
   vFD2_ScintC->SetName("FD2_ScintC");
-  topVolume->AddNode(vFD2_ScintC, 1, new TGeoTranslation(0., 0., Constants::zScintC));
+  vCave->AddNode(vFD2_ScintC, 1, new TGeoTranslation(0., 0., Constants::zScintC));
 
-  float rA = 0.5 *(getRingSize(Constants::zScintA, Constants::etaMaxA) + getRingSize(Constants::zScintA, Constants::etaMinA));
+ // float rA = 0.5 *(getRingSize(Constants::zScintA, Constants::etaMaxA) + getRingSize(Constants::zScintA, Constants::etaMinA));
+  float rA = 0.5 * (rmaxA + rminA);
   for (int i = 0; i < Constants::nSectScint; i ++) {
     auto fb = buildFiberBundle();
     std::string fbname = "bundle" + std::to_string(i) + "_A";
     fb->SetName(fbname.c_str());
     float theta = (2 * i + 1) * TMath::Pi() / Constants::nSectScint ;
-    topVolume->AddNode(fb, 1, new TGeoTranslation(rA * TMath::Cos(theta), rA * TMath::Sin(theta), Constants::zScintA + Constants::dzScint / 2 + Constants::lenFiber /2));
+    vCaveRB24->AddNode(fb, 1, new TGeoTranslation(rA * TMath::Cos(theta), rA * TMath::Sin(theta), Constants::zScintA + Constants::dzScint / 2 + Constants::lenFiber /2));
   }
 
-  float rC = 0.5 *(getRingSize(Constants::zScintC, Constants::etaMaxC) + getRingSize(Constants::zScintC, Constants::etaMinC));
+  // float rC = 0.5 *(getRingSize(Constants::zScintC, Constants::etaMaxC) + getRingSize(Constants::zScintC, Constants::etaMinC));
+  float rC = 0.5 * (rmaxC + rminC);
   for (int i = 0; i < Constants::nSectScint; i ++) {
     auto fb = buildFiberBundle();
     std::string fbname = "bundle" + std::to_string(i) + "_C";
     fb->SetName(fbname.c_str());
     float theta = (2 * i + 1) * TMath::Pi() / Constants::nSectScint ;
-    topVolume->AddNode(fb, 1, new TGeoTranslation(rC * TMath::Cos(theta), rC * TMath::Sin(theta), Constants::zScintC - Constants::dzScint / 2 - Constants::lenFiber /2));
+    vCave->AddNode(fb, 1, new TGeoTranslation(rC * TMath::Cos(theta), rC * TMath::Sin(theta), Constants::zScintC - Constants::dzScint / 2 - Constants::lenFiber /2));
   }
 }
 
@@ -302,7 +310,7 @@ TGeoVolumeAssembly* Detector::buildModuleScint(float zmod, float etaMin, float e
     float eta1 = etaMax - ir * (etaMax - etaMin) / nrings;
     float eta2 = etaMax - (ir + 1) * (etaMax - etaMin) / nrings;
     float r1 = getRingSize(zmod, eta1), r2 = getRingSize(zmod, eta2);
-    LOG(info) << "Scintillator ring " << ir + 1 << ": from " << r1 << " to " << r2;
+    LOG(info) << "Scintillator ring: from " << r1 << " to " << r2;
     for (int ic = 0; ic < nsect; ic++) {
       int cellId = mChannelCounter++;
       std::string nodeName = "fd2_node" + std::to_string(cellId);
@@ -317,6 +325,38 @@ TGeoVolumeAssembly* Detector::buildModuleScint(float zmod, float etaMin, float e
       }
       mod->AddNode(node, 1);
     }
+  }
+
+  return mod;
+}
+
+TGeoVolumeAssembly* Detector::buildModuleScint(float rmin, float rmax)
+{
+  if (rmin >= rmax) {
+    LOG(fatal) << "rmin(" << rmin << ") should be less than rmax(" << rmax << "). Please check your input!";
+  }
+
+  auto mod = new TGeoVolumeAssembly("");
+
+  const TGeoMedium* medium = gGeoManager->GetMedium("FD2_Scintillator");
+
+  int   nsect = Constants::nSectScint;
+  float dz = Constants::dzScint;
+
+  LOG(info) << "Scintillator ring: from " << rmin << " to " << rmax;
+  for (int ic = 0; ic < nsect; ic++) {
+    int cellId = mChannelCounter++;
+    std::string nodeName = "fd2_node" + std::to_string(cellId);
+    float phi1 = ic * 360. / nsect;
+    float phi2 = (ic + 1) * 360. / nsect;
+    auto tbs = new TGeoTubeSeg("tbs", rmin, rmax, dz / 2, phi1, phi2);
+    auto node = new TGeoVolume(nodeName.c_str(), tbs, medium);
+    if (cellId <  nsect) {
+      node->SetLineColor(ic % 2 == 0 ? kRed : kRed - 7);
+    } else {
+      node->SetLineColor(ic % 2 == 0 ? kBlue : kBlue - 7);
+    }
+    mod->AddNode(node, 1);
   }
 
   return mod;
@@ -364,7 +404,6 @@ void Detector::defineSensitiveVolumes()
   for (int ivol = 0; ivol < mChannelCounter; ivol++) {
     std::string volumeName = "fd2_node" + std::to_string(ivol);
     auto v = (TGeoVolume*)gGeoManager->GetVolume(volumeName.c_str());
-    LOG(info) << "Adding sensitive volume " << volumeName.c_str();
     if (!v) {
       continue;
     }

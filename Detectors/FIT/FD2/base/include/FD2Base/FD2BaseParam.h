@@ -24,6 +24,12 @@ namespace fd2
 
 struct FD2BaseParam : public o2::conf::ConfigurableParamHelper<FD2BaseParam> {
 
+  float rminA = 6.25;
+  float rmaxA = 27.9;
+
+  float rminC = 3.59;
+  float rmaxC = 29.34;
+
   O2ParamDef(FD2BaseParam, "FD2Base");
 };
 
