@@ -12,7 +12,7 @@
 o2_add_library(FD2Simulation
                SOURCES src/Detector.cxx
                PUBLIC_LINK_LIBRARIES O2::FD2Base
-	                             O2::DataFormatsFV0
+	                             O2::DataFormatsFD3
                                      ROOT::Physics)
 
 o2_target_root_dictionary(FD2Simulation

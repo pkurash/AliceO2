@@ -15,7 +15,7 @@
 #ifndef ALICEO2_FD2_DETECTOR_H_
 #define ALICEO2_FD2_DETECTOR_H_
 
-#include "DataFormatsFV0/Hit.h"
+#include "DataFormatsFD3/Hit.h"
 #include "SimulationDataFormat/BaseHits.h"
 #include "DetectorsBase/Detector.h"
 #include "FD2Base/GeometryTGeo.h"
@@ -54,7 +54,7 @@ class Detector : public o2::base::DetImpl<Detector>
   void ConstructGeometry() override;
 
   /// This method is an example of how to add your own point of type Hit to the clones array
-  o2::fv0::Hit* addHit(int trackId, unsigned int detId,
+  o2::fd3::Hit* addHit(int trackId, unsigned int detId,
                        const math_utils::Point3D<float>& startPos,
                        const math_utils::Point3D<float>& endPos,
                        const math_utils::Vector3D<float>& startMom,
@@ -66,7 +66,7 @@ class Detector : public o2::base::DetImpl<Detector>
   //   unsigned int startStatus,
   //   unsigned int endStatus);
 
-  std::vector<o2::fv0::Hit>* getHits(Int_t iColl)
+  std::vector<o2::fd3::Hit>* getHits(Int_t iColl)
   {
     if (iColl == 0) {
       return mHits;
@@ -98,7 +98,7 @@ class Detector : public o2::base::DetImpl<Detector>
   Detector(const Detector&);
   Detector& operator=(const Detector&);
 
-  std::vector<o2::fv0::Hit>* mHits = nullptr;
+  std::vector<o2::fd3::Hit>* mHits = nullptr;
   GeometryTGeo* mGeometryTGeo = nullptr;
 
   TGeoVolumeAssembly* buildModuleScint(float zmod, float etaMin, float etaMax);

@@ -46,11 +46,11 @@ class FairModule;
 class TGeoMedium;
 
 using namespace o2::fd2;
-using o2::fv0::Hit;
+using o2::fd3::Hit;
 
 Detector::Detector(bool active)
   : o2::base::DetImpl<Detector>("FD2", true),
-    mHits(o2::utils::createSimVector<o2::fv0::Hit>()),
+    mHits(o2::utils::createSimVector<o2::fd3::Hit>()),
     mGeometryTGeo(nullptr),
     mTrackData()
 {
@@ -59,7 +59,7 @@ Detector::Detector(bool active)
 Detector::Detector(const Detector& rhs)
   : o2::base::DetImpl<Detector>(rhs),
     mTrackData(),
-    mHits(o2::utils::createSimVector<o2::fv0::Hit>()),
+    mHits(o2::utils::createSimVector<o2::fd3::Hit>()),
     mChannelCounter(0),
     mChannelId{}
 {
@@ -151,7 +151,7 @@ bool Detector::ProcessHits(FairVolume* vol)
   return true;
 }
 
-o2::fv0::Hit* Detector::addHit(int trackId, unsigned int detId,
+o2::fd3::Hit* Detector::addHit(int trackId, unsigned int detId,
                                const math_utils::Point3D<float>& startPos,
                                const math_utils::Point3D<float>& endPos,
                                const math_utils::Vector3D<float>& startMom,
@@ -268,13 +268,14 @@ void Detector::buildModules()
 
   //vFD2_ScintA = buildModuleScint(Constants::zScintA, Constants::etaMinA, Constants::etaMaxA);
   vFD2_ScintA = buildModuleScint(rminA, rmaxA);
+  vFD2_ScintC = buildModuleScint(rminC, rmaxC);
+
   vFD2_ScintA->SetName("FD2_ScintA");
-  vCaveRB24->AddNode(vFD2_ScintA, 1, new TGeoTranslation(0., 0., Constants::zScintA));
+  vFD2_ScintC->SetName("FD2_ScintC");
 
  // vFD2_ScintC = buildModuleScint(Constants::zScintC, Constants::etaMaxC, Constants::etaMinC);
-  vFD2_ScintC = buildModuleScint(rminC, rmaxC);
-  vFD2_ScintC->SetName("FD2_ScintC");
-  vCave->AddNode(vFD2_ScintC, 1, new TGeoTranslation(0., 0., Constants::zScintC));
+  vCaveRB24->AddNode(vFD2_ScintA, 1, new TGeoTranslation(0., 0., Constants::zScintA));
+  vCave->AddNode(vFD2_ScintC, 1, new TGeoTranslation(0., 0.,  Constants::zScintC));
 
  // float rA = 0.5 *(getRingSize(Constants::zScintA, Constants::etaMaxA) + getRingSize(Constants::zScintA, Constants::etaMinA));
   float rA = 0.5 * (rmaxA + rminA);
@@ -306,25 +307,24 @@ TGeoVolumeAssembly* Detector::buildModuleScint(float zmod, float etaMin, float e
   int nrings = Constants::nRingsScint, nsect = Constants::nSectScint;
   float dz = Constants::dzScint;
 
-  for (int ir = 0; ir < nrings; ir++) {
-    float eta1 = etaMax - ir * (etaMax - etaMin) / nrings;
-    float eta2 = etaMax - (ir + 1) * (etaMax - etaMin) / nrings;
-    float r1 = getRingSize(zmod, eta1), r2 = getRingSize(zmod, eta2);
-    LOG(info) << "Scintillator ring: from " << r1 << " to " << r2;
-    for (int ic = 0; ic < nsect; ic++) {
-      int cellId = mChannelCounter++;
-      std::string nodeName = "fd2_node" + std::to_string(cellId);
-      float phi1 = ic * 360. / nsect;
-      float phi2 = (ic + 1) * 360. / nsect;
-      auto tbs = new TGeoTubeSeg("tbs", r1, r2, dz / 2, phi1, phi2);
-      auto node = new TGeoVolume(nodeName.c_str(), tbs, medium);
-      if (cellId < nrings * nsect) {
-        node->SetLineColor((ir + ic) % 2 == 0 ? kRed : kRed - 7);
-      } else {
-        node->SetLineColor((ir + ic) % 2 == 0 ? kBlue : kBlue - 7);
-      }
-      mod->AddNode(node, 1);
+  float r1 = getRingSize(zmod, etaMax), r2 = getRingSize(zmod, etaMin);
+  if (r1 >= r2) {
+    LOG(fatal) << "rmin(" << r1 << ") should be less than rmax(" << r2 << "). Please check your input!";
+  }
+  LOG(info) << "Scintillator ring: from " << r1 << " to " << r2;
+  for (int ic = 0; ic < nsect; ic++) {
+    int cellId = mChannelCounter++;
+    std::string nodeName = "fd2_node" + std::to_string(cellId);
+    float phi1 = ic * 360. / nsect;
+    float phi2 = (ic + 1) * 360. / nsect;
+    auto tbs = new TGeoTubeSeg("tbs", r1, r2, dz / 2, phi1, phi2);
+    auto node = new TGeoVolume(nodeName.c_str(), tbs, medium);
+    if (cellId < nrings * nsect) {
+      node->SetLineColor(ic % 2 == 0 ? kRed : kRed - 7);
+    } else {
+      node->SetLineColor(ic % 2 == 0 ? kBlue : kBlue - 7);
     }
+    mod->AddNode(node, 1);
   }
 
   return mod;
