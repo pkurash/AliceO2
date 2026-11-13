@@ -27,7 +27,7 @@ if(TGeo2VecGeom_FOUND)
   endif()
 endif()
 
-set(G4SETUP_SOURCES src/G4Config.cxx src/G4RunConfiguration.cxx src/G4LocalFieldConstruction.cxx
+set(G4SETUP_SOURCES src/G4Config.cxx src/G4RunConfiguration.cxx src/G4LocalFieldConstruction.cxx src/G4FieldCache.cxx
                     src/VecGeomNavigation.cxx src/O2MonopolePhysics.cxx)
 if(G4SETUP_WITH_VECGEOM)
   list(APPEND G4SETUP_SOURCES src/VecGeomG4Map.cxx src/VecGeomChecks.cxx src/VecGeomG4NavigatorBase.cxx
@@ -73,6 +73,12 @@ o2_target_root_dictionary(SimSetup
                                   include/SimSetup/FlukaParam.h
                                   include/SimSetup/MCReplayParam.h
                           LINKDEF src/GConfLinkDef.h)
+
+o2_add_test(StaticTLSReserve
+            SOURCES test/testStaticTLSReserve.cxx
+            COMPONENT_NAME SimSetup
+            PUBLIC_LINK_LIBRARIES O2::SimSetup
+            LABELS simsetup)
 
 o2_add_test_root_macro(UserDecay.C
                        PUBLIC_LINK_LIBRARIES O2::SimSetup

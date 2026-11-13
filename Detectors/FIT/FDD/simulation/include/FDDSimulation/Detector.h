@@ -45,6 +45,7 @@ class Detector : public o2::base::DetImpl<Detector>
   ~Detector() override;
 
   void InitializeO2Detector() override;
+  bool isMTSafe() const override { return true; }
 
   Bool_t ProcessHits(FairVolume* v = nullptr) override;
 

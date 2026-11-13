@@ -231,26 +231,51 @@ set_tests_properties(o2sim_G4
                                 G4)
 set_property(TEST o2sim_G4 APPEND PROPERTY ENVIRONMENT ${G4ENV})
 
-# # note that the MT is currently only supported in the non FairMQ version
-# # switched off
-# o2_add_test_command(NAME o2sim_G4_mt
-#                   WORKING_DIRECTORY ${SIMTESTDIR}
-#                   TIMEOUT 400
-#                   COMMAND $<TARGET_FILE:${o2simSerialExecutable}>
-#                   COMMAND_LINE_ARGS -n
-#                                      1
-#                                      -e
-#                                      TGeant4
-#                                      --isMT
-#                                      on
-#                                      -o
-#                                      o2simG4MT
-#                   ENVIRONMENT "${SIMENV}"
-#                   LABELS "g4;sim;long")
-#set_tests_properties(o2sim_G4_mt
-#                     PROPERTIES PASS_REGULAR_EXPRESSION
-#                                "Macro finished succesfully")
-#set_property(TEST o2sim_G4_mt APPEND PROPERTY ENVIRONMENT ${G4ENV})
+# multithreaded Geant4 must give the same output for 1 and 2 transport threads (not run on macOS)
+if(Geant4_multithreaded_FOUND AND NOT APPLE)
+  o2_add_test_command(NAME o2sim_G4_mt_equality
+                      WORKING_DIRECTORY ${SIMTESTDIR}
+                      TIMEOUT 600
+                      COMMAND ${CMAKE_SOURCE_DIR}/run/o2-sim-mt-equality.sh
+                      COMMAND_LINE_ARGS --workdir
+                                        ${SIMTESTDIR}/mt_equality
+                      ENVIRONMENT "${SIMENV}"
+                      LABELS "g4;sim;long")
+  set_tests_properties(o2sim_G4_mt_equality
+                       PROPERTIES PASS_REGULAR_EXPRESSION
+                                  "EQUALITY TEST PASSED")
+  set_property(TEST o2sim_G4_mt_equality APPEND PROPERTY ENVIRONMENT ${G4ENV})
+
+  # the o2sim_G4 setup in multithreaded Geant4 mode
+  o2_add_test_command(NAME o2sim_G4_MT
+                      WORKING_DIRECTORY ${SIMTESTDIR}
+                      TIMEOUT 400
+                      COMMAND $<TARGET_FILE:${o2simExecutable}>
+                      COMMAND_LINE_ARGS --isMT
+                                        1
+                                        -n
+                                        2
+                                        -j
+                                        2
+                                        -e
+                                        TGeant4
+                                        -o
+                                        o2simG4MT
+                                        --chunkSize
+                                        2
+                                        --skipModules
+                                        MFT ZDC
+                                        --seed
+                                        15946057944514955802
+                                        --configKeyValues
+                                        "align-geom.mDetectors=none"
+                      ENVIRONMENT "${SIMENV}"
+                      LABELS "g4;sim;long")
+  set_tests_properties(o2sim_G4_MT
+                       PROPERTIES PASS_REGULAR_EXPRESSION
+                                  "SIMULATION RETURNED SUCCESFULLY")
+  set_property(TEST o2sim_G4_MT APPEND PROPERTY ENVIRONMENT ${G4ENV})
+endif()
 
 
 o2_add_test(CheckStackG4
@@ -361,6 +386,7 @@ set_tests_properties(o2sim_G4_checklogs
                      PROPERTIES FIXTURES_REQUIRED G4)
 endif()
 
+install(PROGRAMS o2-sim-mt-equality.sh DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES o2-sim-client.py PERMISSIONS GROUP_READ GROUP_EXECUTE OWNER_EXECUTE OWNER_WRITE OWNER_READ WORLD_EXECUTE WORLD_READ DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(DIRECTORY SimExamples/
         DESTINATION examples

@@ -48,6 +48,7 @@
 #include "SimPublishChannelHelper.h"
 #include <CommonUtils/FileSystemUtils.h>
 #include <CCDB/BasicCCDBManager.h>
+#include <SimSetup/StaticTLSReserve.h>
 
 std::string getServerLogName()
 {
@@ -435,6 +436,8 @@ std::vector<char*> checkArgs(int argc, char* argv[])
 // for parallel simulation
 int main(int argc, char* argv[])
 {
+  // for the workers, which load Geant4 by dlopen; glibc takes the static TLS reserve only at program start
+  o2::setStaticTLSReserve();
   LOG(info) << "This is o2-sim version " << o2::fullVersion() << " (" << o2::gitRevision() << ")";
   LOG(info) << o2::getBuildInfo();
 
@@ -533,6 +536,14 @@ int main(int argc, char* argv[])
   int nworkers = conf.getNSimWorkers();
   setenv("ALICE_NSIMWORKERS", std::to_string(nworkers).c_str(), 1);
   LOG(info) << "Running with " << nworkers << " sim workers ";
+  if (conf.getIsMT()) {
+    if (conf.getMCEngine() != "TGeant4") {
+      LOG(fatal) << "Multithreaded mode (--isMT) is only available with TGeant4";
+    }
+    // one worker process with a Geant4 transport thread per sim worker
+    setenv("ALICE_O2SIM_MT", "ON", 1);
+    LOG(info) << "Multithreaded Geant4 with " << nworkers << " transport threads";
+  }
 
   o2::utils::ShmManager::Instance().createGlobalSegment(nworkers);
 
@@ -817,7 +828,7 @@ int main(int argc, char* argv[])
   }
 
   // sum the Geant4 scoring meshes written by the individual workers
-  if (!errored && o2::conf::mergeG4ScoringDumps(".", conf.getNSimWorkers()) < 0) {
+  if (!errored && o2::conf::mergeG4ScoringDumps(".", conf.getIsMT() ? 1 : conf.getNSimWorkers()) < 0) {
     errored = true;
   }
 
