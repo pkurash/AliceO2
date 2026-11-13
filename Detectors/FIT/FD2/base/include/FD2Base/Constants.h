@@ -26,6 +26,8 @@ struct Constants {
   static constexpr float zScintA = 1700.0f;
   static constexpr float zScintC = -1950.0f;
 
+  static constexpr float offsetRB24 = 1387.5;
+
   static constexpr float etaMinA = 4.8f;
   static constexpr float etaMaxA = 6.3f;
   static constexpr float etaMinC = -7.0f;

@@ -273,10 +273,8 @@ void Detector::buildModules()
   vFD2_ScintA->SetName("FD2_ScintA");
   vFD2_ScintC->SetName("FD2_ScintC");
 
-  const float offsetRB24 = 1387.5; // RB24 coordinate frame!!!
-
  // vFD2_ScintC = buildModuleScint(Constants::zScintC, Constants::etaMaxC, Constants::etaMinC);
-  vCaveRB24->AddNode(vFD2_ScintA, 1, new TGeoTranslation(0.f, 0.f, Constants::zScintA  - offsetRB24)); 
+  vCaveRB24->AddNode(vFD2_ScintA, 1, new TGeoTranslation(0.f, 0.f, Constants::zScintA  - Constants::offsetRB24)); 
   vCave->AddNode(vFD2_ScintC, 1, new TGeoTranslation(0.f, 0.f, Constants::zScintC));
 
  // float rA = 0.5 *(getRingSize(Constants::zScintA, Constants::etaMaxA) + getRingSize(Constants::zScintA, Constants::etaMinA));
@@ -286,7 +284,7 @@ void Detector::buildModules()
     std::string fbname = "bundle" + std::to_string(i) + "_A";
     fb->SetName(fbname.c_str());
     float theta = (2 * i + 1) * TMath::Pi() / Constants::nSectScint ;
-    vCaveRB24->AddNode(fb, 1, new TGeoTranslation(rA * TMath::Cos(theta), rA * TMath::Sin(theta), Constants::zScintA - offsetRB24 + Constants::dzScint / 2 + Constants::lenFiber /2));
+    vCaveRB24->AddNode(fb, 1, new TGeoTranslation(rA * TMath::Cos(theta), rA * TMath::Sin(theta), Constants::zScintA - Constants::offsetRB24 + Constants::dzScint / 2 + Constants::lenFiber / 2));
   }
 
   // float rC = 0.5 *(getRingSize(Constants::zScintC, Constants::etaMaxC) + getRingSize(Constants::zScintC, Constants::etaMinC));
