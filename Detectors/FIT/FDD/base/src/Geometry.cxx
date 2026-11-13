@@ -159,21 +159,21 @@ void Geometry::buildGeometry()
   if (!vCaveRB24) {
     LOG(fatal) << "Could not find the top volume for A-side";
   }
+  const Float_t kPosFDA = 1696.67 - 1313.347 - 75.; // z-center of assembly (cm)
   if (baseParam.isExperimental) {
      mChannelCounter = 0;
      float rmin = baseParam.rminA, rmax = baseParam.rmaxA;
      auto vFDDA = buildModuleScint(rmin, rmax);
      vFDDA->SetName("FDDA");
-     vCaveRB24->AddNode(vFDDA, 1, new TGeoTranslation(0., 0., Constants::zScintA));
+     vCaveRB24->AddNode(vFDDA, 1, new TGeoTranslation(0., 0., Constants::zScintA - Constants::offsetRB24));
      int nsect = Constants::nSectScint;
      for (int i = 0; i < nsect; i ++){
        float rb = 0.5 * (rmin + rmax);
        float theta = (2 * i + 1) * TMath::TwoPi() / nsect / 2;
        auto bundleA = buildFiberBundle();
-       vCaveRB24->AddNode(bundleA, 1, new TGeoTranslation(rb * TMath::Cos(theta), rb * TMath::Sin(theta), Constants::zScintA + Constants::dzScint / 2 + Constants::lenFiber / 2 ));
+       vCaveRB24->AddNode(bundleA, 1, new TGeoTranslation(rb * TMath::Cos(theta), rb * TMath::Sin(theta), Constants::zScintA - Constants::offsetRB24 + Constants::dzScint / 2 + Constants::lenFiber / 2 ));
      }
   } else {
-    const Float_t kPosFDA = 1696.67 - 1313.347 - 75.; // z-center of assembly (cm)
     vCaveRB24->AddNode(vFDAarray, 1, new TGeoTranslation(0., 0., kPosFDA - kFDACelldz / 2. - 0.1));
     vCaveRB24->AddNode(vFDAarray, 2, new TGeoTranslation(0., 0., kPosFDA + kFDACelldz / 2. + 0.1));
   }

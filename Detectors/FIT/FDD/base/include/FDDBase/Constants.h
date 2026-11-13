@@ -51,6 +51,8 @@ struct Constants{
   static constexpr float rMinFiber = 0.0f; // fiber min radius
   static constexpr float rMaxFiber = 0.1f; // fiber max radius
   static constexpr float lenFiber = 12.0f; // fiber length
+					   
+  static constexpr float offsetRB24 = 1387.5;
 };
 
 } // namespace fdd
