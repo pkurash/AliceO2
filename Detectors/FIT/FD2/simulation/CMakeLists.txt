@@ -11,9 +11,13 @@
 
 o2_add_library(FD2Simulation
                SOURCES src/Detector.cxx
+	               src/Digitizer.cxx
                PUBLIC_LINK_LIBRARIES O2::FD2Base
 	                             O2::DataFormatsFD3
+				     O2::DataFormatsFV0
                                      ROOT::Physics)
 
 o2_target_root_dictionary(FD2Simulation
-                          HEADERS include/FD2Simulation/Detector.h)
+                          HEADERS include/FD2Simulation/Detector.h
+                                  include/FD2Simulation/Digitizer.h
+	     	                  include/FD2Simulation/DigitizationConstant.h)
