@@ -140,7 +140,7 @@ Bool_t Detector::ProcessHits(FairVolume* vol)
   if (baseParam.isExperimental) { 
     volId = fMC->CurrentVolID(copy);
     detId = mChannelId[volId];
-    LOG(info) << "volId = " << volId << ", detId = " << detId; 
+    // LOG(info) << "volId = " << volId << ", detId = " << detId; 
   } else {
     current_volid = fMC->CurrentVolID(copy);
     // Get sensitive volumes id (scintillator pads)
