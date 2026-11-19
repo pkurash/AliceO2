@@ -65,7 +65,7 @@ class VecGeomG4Navigator : public VecGeomG4NavigatorBase
   G4VPhysicalVolume* updateG4History();
   void locateFromWorld(const V3& point);
   /// Go up past every volume the point is on the surface of and heading out of, then down again.
-  void leaveFlushVolumes(const V3& point, const V3& dir, int minLevel, vecgeom::VPlacedVolume const* avoid);
+  void leaveFlushVolumes(const V3& point, const V3& dir, int minLevel, vecgeom::NavigationState const* avoid);
   /// Sets fEnteredDaughter and fExitedMother from the paths before (mReloScratch) and after a crossing.
   void updateCrossingFlags(bool entering);
   void clearLastExited()
@@ -107,6 +107,7 @@ class VecGeomG4Navigator : public VecGeomG4NavigatorBase
   bool mWouldEnter = false; ///< the last ComputeStep ends by entering a daughter
   bool mWouldExit = false;  ///< the last ComputeStep ends by leaving the current volume
   G4ThreeVector mNextPoint{-1e8, -1e8, -1e8};
+  vecgeom::Vector3D<double> mNextDir{0., 0., 1.}; ///< direction of the step that found the boundary
   G4ThreeVector mLastLocatedPoint{-1e8, -1e8, -1e8};
   bool mLocatedOnBoundary = false;
   G4ThreeVector mSafetyOrig{-1e8, -1e8, -1e8}; ///< the last point a safety was computed for
@@ -120,6 +121,13 @@ class VecGeomG4Navigator : public VecGeomG4NavigatorBase
   static constexpr int kActionThresholdNoZeroSteps = 10;
   static constexpr int kAbandonThresholdNoZeroSteps = 25;
   int mNzeroSteps = 0;
+  bool mZeroLinearSeen = false; ///< a step along the located momentum occurred in the current run of zero steps
+  void resetZeroSteps()
+  {
+    mNzeroSteps = 0;
+    mZeroLinearSeen = false;
+  }
+  G4ThreeVector mLastLocatedDir; ///< the direction the last locate was given
 
   // What the navigator had to work around, reported at the end.
   long mZeroStepCount = 0;

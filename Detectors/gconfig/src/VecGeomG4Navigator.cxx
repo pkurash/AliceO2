@@ -160,31 +160,44 @@ G4double VecGeomG4Navigator::ComputeStep(const G4ThreeVector& globalPoint, const
   G4double step = std::max(vgStep, 0.) * kVGToG4;
   const bool entering = mStepState.GetCurrentLevel() > mCurState.GetCurrentLevel();
 
-  // A track that is not moving, handled as G4Navigator does: after ten zero steps the step is
-  // lengthened by 100 kCarTolerance, after twenty-five the event is aborted.
+  // A track that is not moving, with G4Navigator's thresholds: after ten zero steps the step is
+  // lengthened, after twenty-five the event is aborted.
   if (step < 0.05 * kCarTolerance) {
     ++mZeroStepCount;
+    // Without a field Geant4 asks along the momentum it located the track with, and takes a lengthened step.
+    // The field propagator asks along chords and takes a step longer than its chord for a miss.
+    const bool linear = (direction - mLastLocatedDir).mag2() < 1.e-18;
+    mZeroLinearSeen = mZeroLinearSeen || linear;
     if (++mNzeroSteps >= kActionThresholdNoZeroSteps) {
-      ++mStuckPushCount;
-      step += 100. * kCarTolerance;
+      // A track going back and forth over a face between a medium with a field and one without is tangent
+      // to the face: the chord crosses it one way and the momentum the other way. The crossing along the
+      // chord is left at zero length, so that it takes place, and the step along the momentum is lengthened.
+      if (linear || !mZeroLinearSeen) {
+        ++mStuckPushCount;
+        // The push grows fourfold per try from 100 kCarTolerance, capped below the thinnest layers (15 um).
+        constexpr double kMaxStuckPush = 10. * CLHEP::um;
+        const int tries = mNzeroSteps - kActionThresholdNoZeroSteps;
+        step += std::min(100. * kCarTolerance * std::pow(4., tries), kMaxStuckPush);
+      }
       if (mNzeroSteps >= kAbandonThresholdNoZeroSteps) {
         ++mAbandonCount;
         std::ostringstream msg;
         msg << "Track stuck or not moving: " << mNzeroSteps << " zero steps in " << top->GetLabel() << " at ("
             << globalPoint.x() << ", " << globalPoint.y() << ", " << globalPoint.z() << ") mm. Event aborted, as "
             << "G4Navigator does.";
-        mNzeroSteps = 0;
+        resetZeroSteps();
         G4Exception("VecGeomG4Navigator::ComputeStep()", "GeomNav0003", EventMustBeAborted, msg.str().c_str());
       }
     }
   } else {
-    mNzeroSteps = 0;
+    resetZeroSteps();
   }
 
   if (boundaryLimited) {
     mWouldEnter = entering;
     mWouldExit = !entering;
     mNextPoint = globalPoint + step * direction;
+    mNextDir = toDir(direction);
     if (entering) {
       mNextState = mStepState;
     }
@@ -204,11 +217,11 @@ G4double VecGeomG4Navigator::ComputeStep(const G4ThreeVector& globalPoint, const
 /// the surface of and heading out of, then look down again from there, never back into the volume
 /// just left, which stays blocked for the next step. Bounded, because popping and descending can
 /// meet another flush face. It never pops to or above minLevel: a daughter the step entered stays
-/// entered, because the step decided that with the chord direction, and the direction a locate gets
-/// under a field is the momentum. Nor does it descend back into `avoid`, the volume the crossing
-/// exited: on a face a helix touches tangentially chord and momentum disagree about the side.
+/// entered, as the step decided. Nor does it descend back into `avoid`, the volume the crossing
+/// exited. Both guard the decision of the step against a locate direction that disagrees with it
+/// about the side of the face.
 void VecGeomG4Navigator::leaveFlushVolumes(const V3& point, const V3& dir, int minLevel,
-                                           vecgeom::VPlacedVolume const* avoid)
+                                           vecgeom::NavigationState const* avoid)
 {
   for (int round = 0; round < 4; ++round) {
     vecgeom::VPlacedVolume const* left = nullptr;
@@ -242,12 +255,14 @@ void VecGeomG4Navigator::leaveFlushVolumes(const V3& point, const V3& dir, int m
       return; // no daughter holds the point
     }
     if (avoid != nullptr && mCurState.GetCurrentLevel() > level) {
-      // Undo a descent into the volume the crossing exited, at whatever depth the search put it.
-      mPathScratch = mCurState;
-      while (mPathScratch.GetCurrentLevel() > level && mPathScratch.Top() != avoid) {
-        mPathScratch.Pop();
+      // Undo a descent into the volume the crossing exited. It is told by its whole path: the same
+      // placement also sits in every other copy of its mother, where the track may well go.
+      const int exited = avoid->GetCurrentLevel();
+      bool back = static_cast<int>(mCurState.GetCurrentLevel()) >= exited;
+      for (int l = exited - 1; back && l > 0; --l) {
+        back = mCurState.At(l) == avoid->At(l);
       }
-      if (mPathScratch.GetCurrentLevel() > level) {
+      if (back) {
         while (mCurState.GetCurrentLevel() > level) {
           mCurState.Pop();
         }
@@ -294,7 +309,10 @@ G4VPhysicalVolume* VecGeomG4Navigator::LocateGlobalPointAndSetup(const G4ThreeVe
   const bool crossing = onBoundary && (mWouldEnter || mWouldExit) && direction != nullptr;
   const bool entering = crossing && mWouldEnter;
   const V3 p = toVG(point);
-  const V3 dir = direction != nullptr ? toDir(*direction) : V3(0., 0., 0.);
+  // A crossing is located along the direction of the step that found the boundary. The direction given
+  // here is the one after the step, which multiple scattering can have turned back into the volume left;
+  // the track then belongs to what lies behind the face, as G4Navigator does, not to the mother of the two.
+  const V3 dir = crossing ? mNextDir : (direction != nullptr ? toDir(*direction) : V3(0., 0., 0.));
   const double push = (onBoundary && direction != nullptr) ? boundaryPush(p, dir) : 0.;
   const V3 q = p + push * dir;
 
@@ -303,11 +321,12 @@ G4VPhysicalVolume* VecGeomG4Navigator::LocateGlobalPointAndSetup(const G4ThreeVe
   fExitedMother = false;
   mLocatedOnBoundary = false;
   mLastLocatedPoint = point;
+  mLastLocatedDir = direction != nullptr ? *direction : G4ThreeVector(0., 0., 0.);
   mSafetyOrig = kNoPoint;
   clearLastExited();
 
   if (!relativeSearch) {
-    mNzeroSteps = 0; // a new track: nothing of the previous one applies
+    resetZeroSteps(); // a new track: nothing of the previous one applies
     locateFromWorld(p);
   } else if (topOf(mCurState) == nullptr) {
     locateFromWorld(p);
@@ -336,8 +355,19 @@ G4VPhysicalVolume* VecGeomG4Navigator::LocateGlobalPointAndSetup(const G4ThreeVe
       vecgeom::Transformation3D m;
       mCurState.TopMatrix(m);
       vecgeom::GlobalLocator::RelocatePointFromPathForceDifferent(m.Transform(q), mCurState);
-      mReloScratch.SetLastExited();
-      mCurState.SetLastExited(mReloScratch.GetLastExitedState());
+      // As G4Navigator, block the volume left that is a daughter of the deepest volume both paths share.
+      int shared = 0;
+      while (!mCurState.IsOutside() && shared + 1 < static_cast<int>(mCurState.GetCurrentLevel()) &&
+             shared + 1 < static_cast<int>(mReloScratch.GetCurrentLevel()) &&
+             mCurState.At(shared + 1) == mReloScratch.At(shared + 1)) {
+        ++shared;
+      }
+      mPathScratch = mReloScratch;
+      while (static_cast<int>(mPathScratch.GetCurrentLevel()) > shared + 2) {
+        mPathScratch.Pop();
+      }
+      mPathScratch.SetLastExited();
+      mCurState.SetLastExited(mPathScratch.GetLastExitedState());
       setExited(mReloScratch, true);
     }
     mLocatedOnBoundary = true;
@@ -353,7 +383,7 @@ G4VPhysicalVolume* VecGeomG4Navigator::LocateGlobalPointAndSetup(const G4ThreeVe
   }
   if (crossing) {
     leaveFlushVolumes(q, dir, entering ? static_cast<int>(mNextState.GetCurrentLevel()) : 0,
-                      entering ? nullptr : topOf(mReloScratch));
+                      entering || topOf(mReloScratch) == nullptr ? nullptr : &mReloScratch);
     updateCrossingFlags(entering);
   }
   mWouldEnter = false;
@@ -361,7 +391,8 @@ G4VPhysicalVolume* VecGeomG4Navigator::LocateGlobalPointAndSetup(const G4ThreeVe
   return updateG4History();
 }
 
-G4VPhysicalVolume* VecGeomG4Navigator::ResetHierarchyAndLocate(const G4ThreeVector& point, const G4ThreeVector&,
+G4VPhysicalVolume* VecGeomG4Navigator::ResetHierarchyAndLocate(const G4ThreeVector& point,
+                                                               const G4ThreeVector& direction,
                                                                const G4TouchableHistory& history)
 {
   // A track resumes from a stored touchable, usually a secondary starting where its parent's step
@@ -373,8 +404,9 @@ G4VPhysicalVolume* VecGeomG4Navigator::ResetHierarchyAndLocate(const G4ThreeVect
   mWouldExit = false;
   mLocatedOnBoundary = false;
   mLastLocatedPoint = point;
+  mLastLocatedDir = direction;
   mSafetyOrig = kNoPoint;
-  mNzeroSteps = 0;
+  resetZeroSteps();
   fHistory = *history.GetHistory();
   const V3 p = toVG(point);
   bool kept = false;
